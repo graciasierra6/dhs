@@ -1,0 +1,50 @@
+[
+  {
+    "id": "wasting",
+    "label": "Wasting",
+    "shortLabel": "Wasting",
+    "direction": "adverse"
+  },
+  {
+    "id": "anemia_women",
+    "label": "Anemia (women)",
+    "shortLabel": "Anemia",
+    "direction": "adverse"
+  },
+  {
+    "id": "malaria_rdt_positive",
+    "label": "Malaria RDT+",
+    "shortLabel": "Malaria RDT+",
+    "direction": "adverse"
+  },
+  {
+    "id": "zero_dose",
+    "label": "Zero-dose",
+    "shortLabel": "Zero-dose",
+    "direction": "adverse"
+  },
+  {
+    "id": "first_birth_under20",
+    "label": "First birth < 20",
+    "shortLabel": "First birth <20",
+    "direction": "adverse"
+  },
+  {
+    "id": "facility_delivery",
+    "label": "Facility delivery",
+    "shortLabel": "Facility delivery",
+    "direction": "beneficial"
+  },
+  {
+    "id": "fever_care_seeking",
+    "label": "Fever care seeking",
+    "shortLabel": "Fever care",
+    "direction": "beneficial"
+  },
+  {
+    "id": "anc4plus",
+    "label": "ANC4+",
+    "shortLabel": "ANC4+",
+    "direction": "beneficial"
+  }
+]

@@ -1,0 +1,4 @@
+country,iso3,project_file,reference_variant,boundary_id,boundary_year,adm_unit_count,boundary_source,public_download_url,sha256
+DRC,COD,assets/geo/drc-adm1.geojson,simplified,COD-ADM1-28894549,2017,26,"OpenStreetMap, Wambacher",https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/COD/ADM1/geoBoundaries-COD-ADM1_simplified.geojson,bf6096f1c16f2632be9c4d4c0305276024fd5b3f3b9b3e635b2e2018d02f0331
+Ethiopia,ETH,assets/geo/ethiopia-adm1.geojson,full,ETH-ADM1-75662566,2016,11,"Open Africa, Code for Ethiopia",https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/ETH/ADM1/geoBoundaries-ETH-ADM1.geojson,acb690b4f1c31da092b2a20ae2d241d17b25361f38458549302177af993a9d7f
+Nigeria,NGA,assets/geo/nigeria-adm1.geojson,full,NGA-ADM1-27671186,2022,37,GRID3,https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/NGA/ADM1/geoBoundaries-NGA-ADM1.geojson,64fa218ac3d453cc1e66412ff461c5dfa1a4a1ade0da93b239a9891b587d28f9
