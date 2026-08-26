@@ -11,6 +11,8 @@ This inventory covers every source and artifact needed to rebuild
 | `data/composite_indicator_rankings.csv` | Standard composite prevalence/change scores and ranks | Yes |
 | `data/subnational_indicator_rankings.csv` | Indicator values, ranks, and risk-aligned changes | Yes |
 | `data/mortalityunder5.csv` | One-to-one U5MR matching audit for all mapped areas | Yes |
+| `data/source/region_profile_numbers.csv` | Exact indicator values, confidence intervals, ranks, and distribution summaries used by the supplied profile PNGs | Validation |
+| `data/source/region_profile_mortality.csv` | Exact IMR, NMR, and U5MR values used in the lower block of the supplied profile PNGs | Validation |
 | `data/profile_indicator_estimates.csv` | Endpoint estimates, source labels, and 95% confidence intervals | Yes |
 | `data/worsening_count_threshold_distributions.csv` | Derived risk-change distributions, 25th-percentile thresholds, and classifications | Generated and validated |
 | `assets/geo/drc-adm1.geojson` | DRC province boundaries | Validation |
@@ -43,9 +45,9 @@ calculated independently for each indicator within each country:
 - change above `T`: worsening; and
 - otherwise: non-significant change.
 
-The DRC worsening-count map sums these classifications by province. Every
-reference count and indicator membership list is checked against the source
-calculation.
+Each country's worsening-count map sums these classifications by first-level
+administrative area. Every reference count and indicator membership list is
+checked against the source calculation.
 
 ### `data/worsening_count_threshold_distributions.csv`
 
@@ -76,7 +78,16 @@ compared by `validate.R`.
 The CSV download preserves the source years. Some profile graphics use the
 presentation display-year labels retained in the supplied reference.
 
-## U5MR audit filters
+## Supplied profile sources
+
+`region_profile_numbers.csv` contains 581 rows: one latest indicator record for
+every displayed country, area, and indicator. `region_profile_mortality.csv`
+contains 222 rows: IMR, NMR, and U5MR for all 74 areas. The mortality rows are
+already rendered as the lower distribution block in each supplied profile PNG;
+they are not added as separate browser-generated charts.
+
+The latest U5MR values are also checked against `data/mortalityunder5.csv` using
+the following filters:
 
 | Country | ISO | Indicator | `window_mid` | `survey_year` |
 |---|---|---|---:|---:|
@@ -84,10 +95,10 @@ presentation display-year labels retained in the supplied reference.
 | Ethiopia | ETH | U5MR | 2022 | 2025 |
 | Nigeria | NGA | U5MR | 2022 | 2024 |
 
-The build stops unless every dashboard area matches exactly one mortality
-record after documented name normalization. The supplied reference profile
-design does not display U5MR, so this file is used as a validated compatibility
-input rather than a visible profile row.
+The build stops unless every supplied profile row matches the dashboard data,
+every area has one IMR, NMR, and U5MR row, every estimate falls within its
+retained 95% confidence interval, and every latest U5MR value matches the
+existing audit input.
 
 ## Reference-derived presentation artifacts
 
@@ -97,19 +108,19 @@ input rather than a visible profile row.
 | `assets/templates/reference_dashboard.template.html` | Exact body, map, and layout markup | Render input |
 | `assets/css/reference_dashboard.css` | Exact reference CSS | Render input |
 | `assets/js/reference_dashboard.template.js` | Exact interaction code with generated-data placeholders | Render input |
-| `artifacts/profile_images_prevalence.json` | 74 embedded PNG data URIs | Render input |
-| `artifacts/profile_images_change.json` | 74 embedded PNG data URIs | Render input |
-| `artifacts/profile_images_manifest.csv` | Area, chart type, MIME type, byte size, and SHA-256 | Validation |
+| `assets/profile-plots-profiles.zip` | 74 exact supplied profile PNGs, including their mortality block | Render input |
+| `assets/profile-plots-change.zip` | 74 exact supplied change PNGs | Render input |
+| `artifacts/profile_images_manifest.csv` | Area, chart type, source-relative path, dimensions, byte size, and SHA-256 | Validation |
 | `artifacts/reference_payloads/indicatorRows.json` | Supplied indicator payload | Parity validation only |
 | `artifacts/reference_payloads/classifications.json` | Supplied classification payload | Parity validation only |
 | `artifacts/reference_manifest.json` | Reference file and structural counts | Audit |
 
-The two profile image banks contain exactly one prevalence and one change plot
-for every one of the 74 areas. They are retained as reference-derived graphical
-artifacts because raster pixels cannot be recreated exactly from the final PNG
-alone. Their names, formats, sizes, hashes, and one-to-one assignments are
-validated. The numerical data and downloaded CSVs are regenerated from the CSV
-inputs, not read from those images.
+The supplied asset archives contain exactly one profile and one change PNG for
+every one of the 74 areas. The build reads the PNGs directly from the ZIPs without
+extracting them. Their names, formats, dimensions, sizes, hashes, and one-to-one
+assignments are validated against the committed manifest.
+The numerical data and downloaded CSVs are regenerated from the CSV inputs, not
+read from those images.
 
 ## Upstream source artifacts
 
@@ -118,7 +129,11 @@ inputs:
 
 - `composite_indicator_rankings_full.csv`;
 - `Health_systems_combinedindicators_allcountries_REVISED.xlsx`; and
-- `nutrition_zd_malaria_under20agefirstBTH_estimates_DHS.csv`.
+- `nutrition_zd_malaria_under20agefirstBTH_estimates_DHS.csv`;
+- `region_profile_numbers.csv`;
+- `region_profile_mortality.csv`; and
+- the complete supplied profile and change PNG collection, consolidated in the
+  two `assets/profile-plots-*.zip` archives.
 
 `scripts/prepare_profile_input.py` documents regeneration of
 `data/profile_indicator_estimates.csv` from the two indicator-estimate sources.

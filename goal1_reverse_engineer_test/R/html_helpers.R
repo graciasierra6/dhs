@@ -76,8 +76,8 @@ count_colors_for_country <- function(country) {
 count_bucket <- function(value, country) {
   value <- as.integer(value)
   if (identical(country, "DRC")) {
-    if (value < 1L || value > 6L) stop("DRC worsening count must be between 1 and 6.", call. = FALSE)
-    if (value == 1L) return(drc_count_labels[1])
+    if (value < 0L || value > 6L) stop("DRC worsening count must be between 0 and 6.", call. = FALSE)
+    if (value <= 1L) return(drc_count_labels[1])
     if (value <= 3L) return(drc_count_labels[2])
     if (value == 4L) return("4")
     return(drc_count_labels[4])

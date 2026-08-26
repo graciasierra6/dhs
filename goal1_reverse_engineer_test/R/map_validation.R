@@ -184,7 +184,7 @@ validate_map_build <- function(
   uses_per_country <- if (has_dashboard_payload) {
     c(DRC = 5L, Ethiopia = 5L, Nigeria = 5L)
   } else {
-    c(DRC = 5L, Ethiopia = 4L, Nigeria = 4L)
+    c(DRC = 5L, Ethiopia = 5L, Nigeria = 5L)
   }
   expected_use_total <- sum(vapply(names(expected_dashboard_names), function(country) {
     length(expected_dashboard_names[[country]]) * uses_per_country[[country]]

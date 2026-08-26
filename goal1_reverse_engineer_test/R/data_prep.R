@@ -54,6 +54,9 @@ canonical_admin <- function(country, value) {
     country,
     DRC = c(
       "Kasai Central" = "Kasai-Central", "Kasai Oriental" = "Kasai-Oriental",
+      "Kasaï Central" = "Kasai-Central", "Kasaï Oriental" = "Kasai-Oriental",
+      "Kasaï" = "Kasai", "Haut Lomami" = "Haut-Lomami",
+      "Haut uele" = "Haut-Uele", "Haut Uele" = "Haut-Uele",
       "Nord Ubangi" = "Nord-Ubangi", "Sud Ubangi" = "Sud-Ubangi",
       "Tanganika" = "Tanganyika"
     ),

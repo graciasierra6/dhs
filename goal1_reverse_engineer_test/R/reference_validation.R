@@ -104,8 +104,8 @@ reference_compare_frames <- function(expected, actual, keys, text_fields, numeri
 }
 
 reference_extract_section <- function(html, id) {
-  start_marker <- paste0('<section id="', id, '"')
-  start <- regexpr(start_marker, html, fixed = TRUE)[1]
+  start_marker <- paste0('<section[^>]*\\bid="', id, '"[^>]*>')
+  start <- regexpr(start_marker, html, perl = TRUE)[1]
   if (start < 0L) stop("Missing reference section: ", id, call. = FALSE)
   remainder <- substr(html, start, nchar(html))
   finish <- regexpr("</section>", remainder, fixed = TRUE)[1]
@@ -191,17 +191,19 @@ reference_validate_rank_maps <- function(reports, html) {
 }
 
 reference_validate_count_map <- function(report, html) {
-  section <- reference_extract_section(html, "drc-counts")
+  section_id <- paste0(report$slug, "-counts")
+  section <- reference_extract_section(html, section_id)
   if (reference_fixed_count('<use class="map-region', section) != report$rank_max) {
-    stop("DRC count map does not contain 26 provinces.", call. = FALSE)
+    stop(report$country_name, " count map does not contain ", report$rank_max, " ", report$area_plural, ".", call. = FALSE)
   }
+  country_count_colors <- count_colors_for_country(report$country)
   for (detail in report$summary) {
     marker <- paste0('data-name="', html_attr(detail$admin_name), '"')
     start <- regexpr(marker, section, fixed = TRUE)[1]
-    if (start < 0L) stop("DRC count map is missing ", detail$admin_name, call. = FALSE)
+    if (start < 0L) stop(report$country_name, " count map is missing ", detail$admin_name, call. = FALSE)
     remainder <- substr(section, start, nchar(section))
     finish <- regexpr("></use>", remainder, fixed = TRUE)[1]
-    if (finish < 0L) stop("DRC count map has an incomplete region for ", detail$admin_name, call. = FALSE)
+    if (finish < 0L) stop(report$country_name, " count map has an incomplete region for ", detail$admin_name, call. = FALSE)
     region <- substr(remainder, 1L, finish + nchar("></use>") - 1L)
     count_markers <- c(
       paste0(detail$worsening_count, " Worsening:"),
@@ -209,55 +211,46 @@ reference_validate_count_map <- function(report, html) {
       paste0(detail$inside_threshold_count, " Non-significant change:")
     )
     if (!all(vapply(count_markers, grepl, logical(1), x = region, fixed = TRUE))) {
-      stop("DRC count totals differ from source classifications for ", detail$admin_name, call. = FALSE)
+      stop(report$country_name, " count totals differ from source classifications for ", detail$admin_name, call. = FALSE)
     }
     expected_labels <- c(
       detail$worsening_indicators, detail$improving_indicators, detail$inside_threshold_indicators
     )
     if (!all(vapply(html_attr(expected_labels), grepl, logical(1), x = region, fixed = TRUE))) {
-      stop("DRC count indicator membership differs from source data for ", detail$admin_name, call. = FALSE)
+      stop(report$country_name, " count indicator membership differs from source data for ", detail$admin_name, call. = FALSE)
     }
-    expected_fill <- if (detail$worsening_count <= 1L) {
-      "#FDE0DD"
-    } else if (detail$worsening_count <= 3L) {
-      "#FA9FB5"
-    } else if (detail$worsening_count == 4L) {
-      "#DD3497"
-    } else {
-      "#49006A"
+    if (!identical(report$country, "DRC")) {
+      expected_fill <- country_count_colors[[count_bucket(detail$worsening_count, report$country)]]
+      if (!grepl(paste0('fill="', expected_fill, '"'), region, fixed = TRUE)) {
+        stop(report$country_name, " count-map color differs from its worsening count for ", detail$admin_name, call. = FALSE)
+      }
     }
-    if (!grepl(paste0('fill="', expected_fill, '"'), region, fixed = TRUE)) {
-      stop("DRC count-map color category differs from its worsening count for ", detail$admin_name, call. = FALSE)
-    }
+  }
+  expected_legend <- paste0(
+    '<span><i style="background:#004529"></i>5–6</span>',
+    '<span><i style="background:#41AB5D"></i>4</span>',
+    '<span><i style="background:#ADDD8E"></i>2–3</span>',
+    '<span><i style="background:#FFFFE5"></i>0–1</span>'
+  )
+  if (!identical(report$country, "DRC") && !grepl(expected_legend, section, fixed = TRUE)) {
+    stop(report$country_name, " count-map legend order or YlGn palette is incorrect.", call. = FALSE)
   }
   invisible(TRUE)
 }
 
 reference_validate_image_banks <- function(reports, project_root) {
   expected_names <- sort(unlist(lapply(reports, function(report) report$composite$admin_name), use.names = FALSE))
-  manifest <- utils::read.csv(
-    file.path(project_root, "artifacts", "profile_images_manifest.csv"),
-    stringsAsFactors = FALSE,
-    check.names = FALSE,
-    encoding = "UTF-8"
-  )
-  if (nrow(manifest) != 148L) stop("Expected 148 profile images.", call. = FALSE)
-  for (chart_type in c("prevalence", "change")) {
+  manifest <- validate_profile_asset_manifest(reports, project_root)
+  for (chart_type in c("profiles", "change")) {
     rows <- manifest[manifest$chart_type == chart_type, , drop = FALSE]
     if (nrow(rows) != 74L || !identical(sort(rows$admin_name), expected_names)) {
       stop(chart_type, " profile image names do not match the 74 dashboard areas.", call. = FALSE)
     }
-    if (any(rows$mime_type != "image/png") || any(rows$bytes <= 0) || any(nchar(rows$sha256) != 64L)) {
+    if (
+      any(rows$mime_type != "image/png") || any(rows$bytes <= 0) ||
+      any(rows$width <= 0) || any(rows$height <= 0) || any(nchar(rows$sha256) != 64L)
+    ) {
       stop(chart_type, " profile image manifest contains invalid image metadata.", call. = FALSE)
-    }
-  }
-  for (file in c("profile_images_prevalence.json", "profile_images_change.json")) {
-    bank <- jsonlite::fromJSON(file.path(project_root, "artifacts", file), simplifyVector = TRUE)
-    if (length(bank) != 74L || !identical(sort(names(bank)), expected_names)) {
-      stop(file, " does not contain exactly one image for every dashboard area.", call. = FALSE)
-    }
-    if (!all(startsWith(as.character(unlist(bank, use.names = FALSE)), "data:image/png;base64,"))) {
-      stop(file, " contains a non-embedded image.", call. = FALSE)
     }
   }
   invisible(TRUE)
@@ -311,6 +304,56 @@ reference_extract_output_json <- function(html, name, following_name) {
   jsonlite::fromJSON(values[[2]])
 }
 
+reference_extract_output_object <- function(html, name, following_name) {
+  start_marker <- paste0("const ", name, " = ")
+  start <- regexpr(start_marker, html, fixed = TRUE)[1]
+  if (start < 0L) stop("Could not find rendered JavaScript image bank: ", name, call. = FALSE)
+  value_start <- start + nchar(start_marker)
+  remainder <- substr(html, value_start, nchar(html))
+  end_markers <- c(
+    paste0(";\n  const ", following_name),
+    paste0(";\r\n  const ", following_name)
+  )
+  finishes <- vapply(end_markers, function(marker) regexpr(marker, remainder, fixed = TRUE)[1], integer(1))
+  finishes <- finishes[finishes > 0L]
+  if (!length(finishes)) stop("Could not close rendered JavaScript image bank: ", name, call. = FALSE)
+  json <- substr(remainder, 1L, min(finishes) - 1L)
+  jsonlite::fromJSON(json, simplifyVector = TRUE)
+}
+
+reference_validate_output_image_banks <- function(html, reports, project_root) {
+  manifest <- validate_profile_asset_manifest(reports, project_root)
+  banks <- list(
+    profiles = reference_extract_output_object(html, "provinceImagesPrevalence", "provinceImagesChange"),
+    change = reference_extract_output_object(html, "provinceImagesChange", "fmt")
+  )
+  for (chart_type in names(banks)) {
+    bank <- banks[[chart_type]]
+    rows <- manifest[manifest$chart_type == chart_type, , drop = FALSE]
+    rows <- rows[order(rows$admin_name), , drop = FALSE]
+    if (length(bank) != 74L || !identical(sort(names(bank)), rows$admin_name)) {
+      stop("Rendered ", chart_type, " image bank does not match the 74 dashboard areas.", call. = FALSE)
+    }
+    values <- as.character(unlist(bank[rows$admin_name], use.names = FALSE))
+    if (!all(startsWith(values, "data:image/png;base64,"))) {
+      stop("Rendered ", chart_type, " image bank contains a non-PNG data URI.", call. = FALSE)
+    }
+    decoded <- lapply(sub("^data:image/png;base64,", "", values), base64enc::base64decode)
+    sizes <- vapply(decoded, length, integer(1))
+    hashes <- vapply(
+      decoded,
+      digest::digest,
+      character(1),
+      algo = "sha256",
+      serialize = FALSE
+    )
+    if (!identical(as.numeric(sizes), as.numeric(rows$bytes)) || !identical(unname(hashes), rows$sha256)) {
+      stop("Rendered ", chart_type, " image bank differs from the supplied PNG assets.", call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
+
 reference_validate_output_payloads <- function(html, reports) {
   generated <- reference_payloads_from_reports(reports)
   output_indicators <- reference_extract_output_json(html, "indicatorRows", "classifications")
@@ -355,8 +398,19 @@ reference_validate_html <- function(html, reports, output = FALSE) {
   for (id in required_sections) {
     if (!grepl(paste0('id="', id, '"'), html, fixed = TRUE)) stop("Missing section: ", id, call. = FALSE)
   }
-  stopifnot(reference_fixed_count("<svg", html) == 14L)
-  stopifnot(reference_fixed_count('<use class="map-region', html) == 322L)
+  if (output) {
+    for (id in c("ethiopia-counts", "nigeria-counts")) {
+      if (!grepl(paste0('id="', id, '"'), html, fixed = TRUE)) stop("Missing section: ", id, call. = FALSE)
+    }
+    stopifnot(reference_fixed_count("<svg", html) == 16L)
+    stopifnot(reference_fixed_count('<use class="map-region', html) == 370L)
+    stopifnot(reference_fixed_count('<span>04</span>Worsening count</a>', html) == 3L)
+  } else {
+    stopifnot(reference_fixed_count("<svg", html) == 14L)
+    stopifnot(reference_fixed_count('<use class="map-region', html) == 322L)
+    stopifnot(reference_fixed_count("{{ETHIOPIA_COUNT_SECTION}}", html) == 1L)
+    stopifnot(reference_fixed_count("{{NIGERIA_COUNT_SECTION}}", html) == 1L)
+  }
   stopifnot(reference_fixed_count("Download CSV file", html) == 1L)
   stopifnot(!grepl("fetch\\s*\\(", html, perl = TRUE))
   stopifnot(!grepl("(?<![A-Za-z])[A-Za-z]:[/\\\\]", html, perl = TRUE))
@@ -374,7 +428,8 @@ reference_validate_html <- function(html, reports, output = FALSE) {
     stopifnot(grepl("const provinceImagesChange =", html, fixed = TRUE))
   }
   reference_validate_rank_maps(reports, html)
-  reference_validate_count_map(reports[["DRC"]], html)
+  countries_with_count_maps <- if (output) names(reports) else "DRC"
+  for (country in countries_with_count_maps) reference_validate_count_map(reports[[country]], html)
 
   id_matches <- regmatches(html, gregexpr('id="[^"]+"', html, perl = TRUE))[[1]]
   ids <- gsub('^id="|"$', "", id_matches)
@@ -385,6 +440,7 @@ reference_validate_html <- function(html, reports, output = FALSE) {
 
 validate_reference_source_alignment <- function(reports, project_root = ".", output_file = NULL) {
   reference_validate_payloads(reports, project_root)
+  validate_supplied_profile_sources(reports, project_root)
   reference_validate_image_banks(reports, project_root)
   template_html <- reference_read_utf8(
     file.path(project_root, "assets", "templates", "reference_dashboard.template.html")
@@ -394,6 +450,7 @@ validate_reference_source_alignment <- function(reports, project_root = ".", out
     output_html <- reference_read_utf8(output_file)
     reference_validate_html(output_html, reports, output = TRUE)
     reference_validate_output_payloads(output_html, reports)
+    reference_validate_output_image_banks(output_html, reports, project_root)
   }
   invisible(TRUE)
 }
