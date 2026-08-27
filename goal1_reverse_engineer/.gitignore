@@ -1,0 +1,8 @@
+.DS_Store
+.RData
+.Rhistory
+.Rproj.user/
+.Ruserdata
+assets/profile-plots/
+renv/library/
+renv/staging/
