@@ -1,0 +1,11 @@
+{
+  "best:best": "#F0EEE4",
+  "middle:best": "#E8BC8D",
+  "worst:best": "#DF8A36",
+  "best:middle": "#80B0A6",
+  "middle:middle": "#86856A",
+  "worst:middle": "#8C592E",
+  "best:worst": "#107369",
+  "middle:worst": "#254E48",
+  "worst:worst": "#3A2826"
+}
