@@ -1,14 +1,13 @@
-# Goal 1 dashboard reverse engineering
+# Goal 1 dashboard
 
-This project rebuilds the supplied final dashboard as
-`output/goal1_reverse_engineer_test.html` while checking every generated data
-payload against the retained production inputs.
+This project rebuilds the DRC, Ethiopia, and Nigeria dashboard as a single,
+portable HTML file:
 
-The output preserves the reference layout, colors, navigation, maps, hover
-labels, country switching, indicator and bivariate controls, state/profile
-drawer, both profile-chart designs, and CSV download behavior. It is a portable
-project-contained dashboard with no external network data requests or
-machine-specific paths.
+`output/goal1_reverse_engineer_test.html`
+
+The output is self-contained and works when opened directly in a current
+browser. It has no external data requests, local-machine paths, or runtime
+sidecar files. The current clean build is approximately 2.5 MB.
 
 ## Rebuild on another computer
 
@@ -16,13 +15,13 @@ machine-specific paths.
 
 - R 4.1.3 for the closest match to `renv.lock`;
 - internet access once to restore the recorded R packages; and
-- RStudio or a terminal with `Rscript` available.
+- RStudio or a terminal with `Rscript`.
 
-### RStudio workflow
+### RStudio
 
 1. Clone or download the complete `goal1_reverse_engineer/` folder.
 2. Open `goal1_reverse_engineer.Rproj`.
-3. In the R console, run:
+3. Run:
 
 ```r
 install.packages("renv", repos = "https://cloud.r-project.org") # only if needed
@@ -32,9 +31,9 @@ source("validate.R")
 ```
 
 4. Confirm that validation ends with `Validation passed`.
-5. Open `output/goal1_reverse_engineer_test.html` in a current browser.
+5. Open `output/goal1_reverse_engineer_test.html`.
 
-### Terminal workflow
+### Terminal
 
 From the project root:
 
@@ -47,104 +46,105 @@ Rscript scripts/audit_risk_alignment.R
 ```
 
 All build paths are relative to the project root. The project does not use
-`setwd()` or store paths from the computer on which it was created.
+`setwd()`.
 
-## How the reconstruction works
+## Why the HTML stays below 10 MB
 
-The supplied final HTML is retained under
-`reference/reference_dashboard.html` as the visual and functional benchmark.
-The one-time extraction script separates it into:
+The map geometry, validated numerical payloads, CSS, and interaction code are
+embedded in the final HTML. Popup charts are generated as SVG in the browser
+from those embedded numbers when an area is selected.
 
-- `assets/templates/reference_dashboard.template.html`: exact page and map markup;
-- `assets/css/reference_dashboard.css`: exact reference styling;
-- `assets/js/reference_dashboard.template.js`: exact interaction logic with data placeholders;
-- `assets/profile-plots-profiles.zip`: 74 exact supplied profile PNGs;
-- `assets/profile-plots-change.zip`: 74 exact supplied change PNGs;
-- `artifacts/profile_images_manifest.csv`: dimensions, sizes, and hashes for all 148 supplied PNGs; and
-- `artifacts/reference_payloads/`: reference data used only for parity checks.
+The build does not embed 148 raster PNG files. The supplied prevalence PNGs
+alone contain 23.5 MiB of image data (31.3 MiB after base64 encoding); the full
+prevalence-plus-change collection would add about 48.8 MiB after base64
+encoding. Embedding those files is therefore incompatible with a 10 MB HTML.
+Generating the plots as SVG retains offline clicks, profile charts, keyboard
+activation, and CSV downloads without missing image bundles.
 
-During every normal build, R recomputes the 581 indicator records and 581
-country-and-indicator-specific change classifications from the CSV inputs. It
-inserts those values into the interaction code, reads and validates all 148
-supplied PNGs directly from the two `assets/profile-plots-*.zip` archives, embeds them into the
-three local browser-upload-sized JavaScript bundles under `assets/js/`, writes
-`data/worsening_count_threshold_distributions.csv`, and assembles the final
-HTML. Keeping the exact PNG data in local bundles reduces the final HTML from
-about 53 MB to about 2.4 MB without recompressing or changing any plot.
+A clean build enforces a strict output limit of 10,000,000 bytes. The current
+output is approximately 2.5 MB, leaving substantial room for hosting overhead
+and future changes.
 
-The threshold-distribution CSV contains one row for every area-indicator record,
-ordered from most improving to most worsening within each country and indicator.
-It records the risk-aligned change, absolute change used for the distribution,
-type-7 25th-percentile threshold, improving and worsening cutoffs, final
-classification, and the contribution to each count category.
+## Popup behavior
 
-The reference contained a second identical copy of all 37 Nigeria boundary
-paths. It also attached six Ethiopia indicator-map labels and all 37 Nigeria
-current-prevalence labels to the wrong shape IDs. The extraction step removes
-the redundant paths and reconnects those 43 labels to their pinned public
-geometry. Styling and data values remain unchanged; every generated HTML ID is
-unique and every area now colors its own location. The supplied HTML also
-referenced an unavailable relative `favicon.png`; that nonfunctional link is
-removed so the output has no missing runtime asset.
+Every mapped province, region, or state is clickable and keyboard accessible.
 
-The regular rebuild does not require Python. `scripts/extract_reference_assets.py`
-is retained only to document how the supplied reference was decomposed. Run it
-again only if `reference/reference_dashboard.html` is deliberately replaced.
+- Prevalence, indicator-prevalence, and current-rank bivariate views open a
+  source-generated distribution profile. It follows the supplied profile
+  layout, separates row labels from range labels, draws both ends of every 95%
+  confidence interval even when they extend beyond the observed range, and
+  includes all available indicators plus U5MR, NMR, and IMR.
+- Change, worsening-count, and change-mode bivariate views open a source-generated
+  risk-aligned endpoint chart with 95% confidence intervals.
+- Facility delivery, fever care seeking, and ANC4+ are inverted in the change
+  chart so higher plotted values consistently indicate worse outcomes.
+- The download button creates the selected area's CSV directly in the browser.
 
-## Dashboard coverage reproduced
+No server or network connection is required after the HTML is built.
 
-| Country | Areas | Indicators | Reproduced sections |
-|---|---:|---:|---|
-| DRC | 26 provinces | 8 | Current prevalence, 10-year change, indicator prevalence, worsening count, bivariate map |
-| Ethiopia | 11 regions | 7 | Current prevalence, indicator change, indicator prevalence, bivariate map |
-| Nigeria | 37 states/FCT | 8 | Current prevalence, indicator change, indicator prevalence, bivariate map |
+## Data and analytical rules
 
-Ethiopia has seven indicators because the source inputs do not contain an
+Routine builds use:
+
+- `data/count_map_input_combined_master.csv`
+- `data/composite_indicator_rankings.csv`
+- `data/subnational_indicator_rankings.csv`
+- `data/mortalityunder5.csv`
+- `data/profile_indicator_estimates.csv`
+- `data/source/region_profile_numbers.csv`
+- `data/source/region_profile_mortality.csv`
+- the three GeoJSON files under `assets/geo/`
+
+Rows where `composite_set == "severe"` are excluded. Composite rank 1 is best.
+
+Indicator change is risk aligned before ranking or counting. Positive
+`pp_change_10yr_recoded` means worsening. For each indicator in each country,
+threshold `T` is the type-7 25th percentile of the absolute risk-aligned
+changes:
+
+- below `-T`: improving;
+- above `T`: worsening;
+- otherwise: non-significant change.
+
+The build regenerates
+`data/worsening_count_threshold_distributions.csv` with one audit row for each
+of the 581 area-indicator combinations.
+
+## Coverage
+
+| Country | Areas | Indicators |
+|---|---:|---:|
+| DRC | 26 provinces | 8 |
+| Ethiopia | 11 regions | 7 |
+| Nigeria | 37 states/FCT | 8 |
+
+Ethiopia has seven indicators because the retained inputs do not contain an
 Ethiopia malaria-RDT series.
-
-Nigeria's bivariate section supports all eight indicators. Every one of the 28
-distinct indicator pairs has complete data for all 37 states/FCT and works in
-both risk-aligned change and current-prevalence-rank modes.
-
-Clicking a mapped area opens the corresponding exact supplied PNG. Change,
-count, and change-mode bivariate views use the complete PNG from the supplied
-`change/` folder, retaining its four-across line-plot layout. Prevalence views
-use the complete PNG from the supplied `profiles/` folder, including its U5MR,
-NMR, and IMR distribution rows. No chart is generated or appended in the
-browser. The `Download CSV file` control is populated
-from the indicator and classification payloads.
-
-Maps retain their standard source view boxes and canvas proportions. Each
-country's worsening-count map uses the four requested
-bins from the nine-class ColorBrewer `YlGn` palette, with the legend ordered
-`5–6`, `4`, `2–3`, `0–1` from top to bottom.
 
 ## Validation
 
-`validate.R` stops the build when any check fails. It verifies:
+`validate.R` stops on a mismatch. It checks:
 
-- 26 DRC, 11 Ethiopia, and 37 Nigeria areas;
-- 208 DRC, 77 Ethiopia, and 296 Nigeria indicator records;
-- a 581-row country/indicator threshold-distribution CSV;
-- exact baseline/latest values, raw changes, direction labels, risk-aligned changes, and risk-ordered ranks for all 581 area-indicator records;
-- type-7 25th-percentile threshold `T` separately for every country and indicator;
-- exact reference classifications and composite prevalence/change map values;
-- exact DRC worsening counts and indicator membership;
-- exact DRC worsening-count color categories derived from those risk-aligned counts;
-- one-to-one state/region/province joins to pinned public boundary files;
-- one-to-one U5MR matches for all 74 areas;
-- all 581 rows in `region_profile_numbers.csv` and all 222 IMR/NMR/U5MR rows in
-  `region_profile_mortality.csv`, including estimate/95% CI ordering;
-- 74 unique boundary paths, 322 rendered map regions, and no missing or duplicate IDs;
-- exactly two source profile PNG assets for every area, for 148 images total,
-  with byte sizes and SHA-256 hashes matching the archived reference images;
-- all reference sections and CSV-download wiring;
-- all 77 country-specific indicator pairs (28 DRC, 21 Ethiopia, and 28 Nigeria) with complete area coverage in both bivariate modes;
-- no external data requests, absolute paths, or machine identifiers.
+- 74 administrative areas and 581 indicator records;
+- all source values, endpoint years, confidence intervals, risk directions,
+  ranks, thresholds, classifications, and worsening counts;
+- all 23 country-indicator prevalence maps, including country-specific
+  area/value coverage, alphabetical controls, and non-degenerate risk-aligned
+  color distributions;
+- 222 IMR/NMR/U5MR rows and one-to-one mortality joins;
+- all 77 country-specific bivariate indicator pairs;
+- state/region/province names against pinned boundary metadata;
+- 995 boundary, feature-order, location, hash, and rendered-join checks;
+- complete profile payload coverage for all 74 areas;
+- exact agreement between the 581 plotted latest confidence intervals and the
+  supplied profile-number source, plus validation of all 74 supplied
+  prevalence-profile manifest records;
+- clickable and keyboard profile wiring;
+- no external scripts, image data URIs, network requests, absolute paths, or
+  machine identifiers; and
+- a self-contained final HTML smaller than 10,000,000 bytes.
 
-The offline map audit performs 995 pinned boundary name, code, feature-order,
-location, hash, and rendered-join checks. To additionally compare against the
-current public geoBoundaries downloads, run:
+For an optional live comparison with the current public boundary downloads:
 
 ```sh
 Rscript scripts/validate_maps.R --online
@@ -161,84 +161,39 @@ goal1_reverse_engineer/
 |-- README.md
 |-- DATA_INVENTORY.md
 |-- R/
-|   |-- data_prep.R
-|   |-- profile_assets.R
-|   |-- html_helpers.R
-|   |-- map_validation.R
-|   |-- reference_build.R
-|   |-- reference_validation.R
-|   |-- risk_alignment_validation.R
-|   `-- threshold_distribution.R
 |-- assets/
 |   |-- css/reference_dashboard.css
-|   |-- js/
-|   |   |-- reference_dashboard.template.js
-|   |   |-- profile_images_profiles_01.js
-|   |   |-- profile_images_profiles_02.js
-|   |   `-- profile_images_change_01.js
+|   |-- js/reference_dashboard.template.js
 |   |-- templates/reference_dashboard.template.html
-|   |-- profile-plots-profiles.zip
-|   |-- profile-plots-change.zip
 |   `-- geo/
-|       |-- drc-adm1.geojson
-|       |-- ethiopia-adm1.geojson
-|       `-- nigeria-adm1.geojson
 |-- artifacts/
-|   |-- profile_images_manifest.csv
-|   |-- reference_manifest.json
-|   `-- reference_payloads/
 |-- data/
-|   |-- count_map_input_combined_master.csv
-|   |-- composite_indicator_rankings.csv
-|   |-- subnational_indicator_rankings.csv
-|   |-- mortalityunder5.csv
-|   |-- profile_indicator_estimates.csv
-|   |-- worsening_count_threshold_distributions.csv
-|   |-- reference/
-|   `-- source/
-|-- reference/reference_dashboard.html
+|-- reference/README.md
 |-- scripts/
-|   |-- audit_risk_alignment.R
-|   |-- extract_reference_assets.py
-|   |-- prepare_profile_input.py
-|   |-- validate_maps.R
-|   `-- test_map_validation.R
 |-- renv/
 `-- output/goal1_reverse_engineer_test.html
 ```
 
-`renv/library/`, `.Rproj.user/`, `.Rhistory`, `.RData`, and `.DS_Store` are local
-generated files and must not be uploaded. The 148 popup PNGs are stored inside
-two browser-upload-sized archives so the complete reproducible project remains
-below 100 files. To inspect or replace an individual image, extract the relevant
-`assets/profile-plots-*.zip` file; the
-normal build reads the archive directly and does not require extraction.
+The original benchmark HTML and supplied prevalence-profile PNG archive are
+visual provenance only. They are intentionally kept outside the uploadable
+project because each exceeds the repository's 10 MB file limit. Rendering and
+normal validation use the committed templates, source data, and small manifests;
+they do not require either large reference file.
 
-The uploadable project contains 56 files, excluding ignored local metadata, and
-includes the final HTML. Every project file is below GitHub's browser-upload
-size limit. The final HTML and its three generated `assets/js/profile_images_*.js`
-files must remain in their project-relative locations so popup plots load when
-the HTML is opened. The included `.gitignore` prevents extracted popup images
-and local R/RStudio files from being added accidentally.
+Local `renv/library/`, `.Rproj.user/`, `.Rhistory`, `.RData`, and
+`.DS_Store` files should not be uploaded.
 
-### Upload without command-line authentication
+## Deployment
 
-Create or open the `goal1_reverse_engineer` directory on GitHub, choose
-**Add file > Upload files**, and drag in the contents of this complete project
-folder. The upload now works in the browser because there are fewer than 100
-files and no individual file reaches 25 MiB. Commit the uploaded files through
-the GitHub page.
+For static hosting, deploy
+`output/goal1_reverse_engineer_test.html`. If the host requires a landing file,
+copy or rename that generated file to `index.html` during deployment. No
+`assets/` folder is required beside the deployed HTML.
 
-## Updating the dashboard
+For reproducibility, commit source changes and the regenerated HTML together:
 
-1. Update the relevant files under `data/`, `assets/geo/`, or the source code.
-2. Run `Rscript render.R`.
-3. Run `Rscript validate.R`.
-4. Run `Rscript scripts/audit_risk_alignment.R` for the detailed country-by-indicator audit table.
-5. Review all three countries and click both prevalence- and change-type maps.
-6. Commit the source changes, regenerated HTML, and three regenerated
-   `assets/js/profile_images_*.js` bundles together.
-
-The generated HTML plus its three local profile-image bundles are enough for
-deployment. The complete project folder is required for review, maintenance,
-validation, and future rebuilding.
+1. update the relevant input or source file;
+2. run `Rscript render.R`;
+3. run `Rscript validate.R`;
+4. review representative prevalence and change profiles in all three countries;
+5. commit the code, input changes, audit CSV, and final HTML.

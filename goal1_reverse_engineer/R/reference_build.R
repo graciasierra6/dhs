@@ -5,10 +5,6 @@ reference_replace_once <- function(text, token, replacement) {
   sub(token, replacement, text, fixed = TRUE)
 }
 
-reference_profile_image_bank <- function(chart_type, reports, project_root, manifest, asset_reader) {
-  jsonlite::toJSON(profile_image_bank(chart_type, reports, project_root, manifest), auto_unbox = TRUE)
-}
-
 reference_html_attribute <- function(tag, attribute) {
   marker <- paste0(attribute, '="')
   start <- regexpr(marker, tag, fixed = TRUE)[1]
@@ -144,7 +140,6 @@ build_reference_dashboard <- function(
   )
   generated <- reference_payloads_from_reports(reports)
   validate_supplied_profile_sources(reports, project_root)
-  profile_manifest <- validate_profile_asset_manifest(reports, project_root)
   validate_reference_source_alignment(reports, project_root = project_root)
 
   shell <- reference_read_utf8(
@@ -175,21 +170,21 @@ build_reference_dashboard <- function(
       count_section
     )
   }
-  image_bundles <- profile_write_image_bundles(reports, project_root, profile_manifest)
   indicator_json <- jsonlite::toJSON(
     generated$indicator_rows, dataframe = "rows", auto_unbox = TRUE, na = "null", digits = 15
   )
   classification_json <- jsonlite::toJSON(
     generated$classifications, dataframe = "rows", auto_unbox = TRUE, na = "null", digits = 15
   )
+  mortality_json <- jsonlite::toJSON(
+    reference_mortality_profile_rows(reports, project_root),
+    dataframe = "rows", auto_unbox = TRUE, na = "null", digits = 15
+  )
   script <- reference_replace_once(script, "{{INDICATOR_ROWS}}", indicator_json)
   script <- reference_replace_once(script, "{{CLASSIFICATIONS}}", classification_json)
+  script <- reference_replace_once(script, "{{MORTALITY_ROWS}}", mortality_json)
   html <- reference_replace_once(shell, "{{DASHBOARD_CSS}}", css)
-  html <- reference_replace_once(
-    html,
-    "{{PROFILE_IMAGE_SCRIPTS}}",
-    profile_image_script_tags(image_bundles)
-  )
+  html <- reference_replace_once(html, "{{PROFILE_IMAGE_SCRIPTS}}", "")
   html <- reference_replace_once(html, "{{DASHBOARD_SCRIPT}}", script)
 
   output_path <- if (grepl("^[A-Za-z]:[/\\\\]", output_file)) output_file else file.path(project_root, output_file)
@@ -198,7 +193,6 @@ build_reference_dashboard <- function(
   validate_reference_source_alignment(reports, project_root = project_root, output_file = output_path)
   invisible(list(
     html = normalizePath(output_path, winslash = "/", mustWork = TRUE),
-    threshold_distribution = distribution_path,
-    image_bundles = vapply(image_bundles, `[[`, character(1), "path")
+    threshold_distribution = distribution_path
   ))
 }

@@ -21,7 +21,14 @@ reference_payloads_from_reports <- function(reports) {
       latestYear = as.integer(rows$latest_year),
       baselineYear = as.integer(rows$baseline_year),
       baselineEstimate = as.numeric(rows$baseline_estimate),
+      baselineCiL = as.numeric(rows$baseline_ci_l),
+      baselineCiU = as.numeric(rows$baseline_ci_u),
+      baselineDisplayYear = as.character(rows$baseline_display_year),
       observedLatestEstimate = as.numeric(rows$observed_latest_estimate),
+      latestCiL = as.numeric(rows$latest_ci_l),
+      latestCiU = as.numeric(rows$latest_ci_u),
+      latestDisplayYear = as.character(rows$latest_display_year),
+      surveySource = as.character(rows$survey_source),
       ppChange10yr = as.numeric(rows$pp_change_10yr),
       ppChange10yrRecoded = as.numeric(rows$pp_change_10yr_recoded),
       changeRank = as.numeric(rows$change_rank),
@@ -51,6 +58,23 @@ reference_payloads_from_reports <- function(reports) {
   }))
 
   list(indicator_rows = indicator_rows, classifications = classifications)
+}
+
+reference_mortality_profile_rows <- function(reports, project_root = ".") {
+  supplied <- validate_supplied_profile_sources(reports, project_root)$mortality
+  rows <- data.frame(
+    country = vapply(supplied$country, reference_slug, character(1)),
+    adminName = as.character(supplied$admin_name),
+    indicator = as.character(supplied$indicator),
+    value = as.numeric(supplied$prev),
+    stringsAsFactors = FALSE
+  )
+  rows <- rows[order(rows$country, rows$adminName, rows$indicator), , drop = FALSE]
+  rownames(rows) <- NULL
+  if (nrow(rows) != 222L || anyDuplicated(rows[c("country", "adminName", "indicator")])) {
+    stop("Profile mortality payload must contain 222 unique area-indicator rows.", call. = FALSE)
+  }
+  rows
 }
 
 reference_sort_frame <- function(data, keys) {
@@ -102,7 +126,6 @@ reference_compare_frames <- function(expected, actual, keys, text_fields, numeri
   }
   invisible(TRUE)
 }
-
 reference_extract_section <- function(html, id) {
   start_marker <- paste0('<section[^>]*\\bid="', id, '"[^>]*>')
   start <- regexpr(start_marker, html, perl = TRUE)[1]
@@ -229,31 +252,11 @@ reference_validate_count_map <- function(report, html) {
       }
     }
   }
-  expected_legend <- paste0(
-    '<span><i style="background:#004529"></i>5–6</span>',
-    '<span><i style="background:#41AB5D"></i>4</span>',
-    '<span><i style="background:#ADDD8E"></i>2–3</span>',
-    '<span><i style="background:#FFFFE5"></i>0–1</span>'
-  )
-  if (!identical(report$country, "DRC") && !grepl(expected_legend, section, fixed = TRUE)) {
-    stop(report$country_name, " count-map legend order or YlGn palette is incorrect.", call. = FALSE)
-  }
-  invisible(TRUE)
-}
-
-reference_validate_image_banks <- function(reports, project_root) {
-  expected_names <- sort(unlist(lapply(reports, function(report) report$composite$admin_name), use.names = FALSE))
-  manifest <- validate_profile_asset_manifest(reports, project_root)
-  for (chart_type in c("profiles", "change")) {
-    rows <- manifest[manifest$chart_type == chart_type, , drop = FALSE]
-    if (nrow(rows) != 74L || !identical(sort(rows$admin_name), expected_names)) {
-      stop(chart_type, " profile image names do not match the 74 dashboard areas.", call. = FALSE)
-    }
-    if (
-      any(rows$mime_type != "image/png") || any(rows$bytes <= 0) ||
-      any(rows$width <= 0) || any(rows$height <= 0) || any(nchar(rows$sha256) != 64L)
-    ) {
-      stop(chart_type, " profile image manifest contains invalid image metadata.", call. = FALSE)
+  if (!identical(report$country, "DRC")) {
+    legend_markers <- c("background:#004529", "background:#41AB5D", "background:#ADDD8E", "background:#FFFFE5")
+    legend_positions <- vapply(legend_markers, function(marker) regexpr(marker, section, fixed = TRUE)[1], integer(1))
+    if (any(legend_positions < 0L) || is.unsorted(legend_positions, strictly = TRUE)) {
+      stop(report$country_name, " count-map legend order or YlGn palette is incorrect.", call. = FALSE)
     }
   }
   invisible(TRUE)
@@ -307,84 +310,19 @@ reference_extract_output_json <- function(html, name, following_name) {
   jsonlite::fromJSON(values[[2]])
 }
 
-reference_extract_output_object <- function(html, name, following_name) {
-  start_marker <- paste0("const ", name, " = ")
-  start <- regexpr(start_marker, html, fixed = TRUE)[1]
-  if (start < 0L) stop("Could not find rendered JavaScript image bank: ", name, call. = FALSE)
-  value_start <- start + nchar(start_marker)
-  remainder <- substr(html, value_start, nchar(html))
-  end_markers <- c(
-    paste0(";\n  const ", following_name),
-    paste0(";\r\n  const ", following_name)
-  )
-  finishes <- vapply(end_markers, function(marker) regexpr(marker, remainder, fixed = TRUE)[1], integer(1))
-  finishes <- finishes[finishes > 0L]
-  if (!length(finishes)) stop("Could not close rendered JavaScript image bank: ", name, call. = FALSE)
-  json <- substr(remainder, 1L, min(finishes) - 1L)
-  jsonlite::fromJSON(json, simplifyVector = TRUE)
-}
-
-reference_validate_output_image_banks <- function(html, reports, project_root) {
-  manifest <- validate_profile_asset_manifest(reports, project_root)
-  plans <- lapply(c("profiles", "change"), function(chart_type) {
-    profile_image_bundle_plan(chart_type, reports, project_root, manifest)
-  })
-  names(plans) <- c("profiles", "change")
-  combined_plan <- c(plans$profiles, plans$change)
-  expected_tags <- profile_image_script_tags(combined_plan)
-  if (!grepl(expected_tags, html, fixed = TRUE)) {
-    stop("Rendered dashboard does not load the expected local profile image bundles.", call. = FALSE)
-  }
-  bundle_directory <- file.path(project_root, "assets", "js")
-  for (chart_type in names(plans)) {
-    plan <- plans[[chart_type]]
-    bank <- attr(plan, "bank")
-    for (chunk in plan) {
-      path <- file.path(bundle_directory, chunk$file_name)
-      if (!file.exists(path)) stop("Missing rendered profile image bundle: ", path, call. = FALSE)
-      if (file.info(path)$size > 20L * 1024L * 1024L) {
-        stop("Rendered profile image bundle exceeds the 20 MiB upload-safe limit: ", path, call. = FALSE)
-      }
-      if (!identical(reference_read_utf8(path), chunk$content)) {
-        stop("Rendered profile image bundle differs from its exact source assets: ", path, call. = FALSE)
-      }
-    }
-    rows <- manifest[manifest$chart_type == chart_type, , drop = FALSE]
-    rows <- rows[order(rows$admin_name), , drop = FALSE]
-    if (length(bank) != 74L || !identical(sort(names(bank)), rows$admin_name)) {
-      stop("Rendered ", chart_type, " image bank does not match the 74 dashboard areas.", call. = FALSE)
-    }
-    values <- as.character(unlist(bank[rows$admin_name], use.names = FALSE))
-    if (!all(startsWith(values, "data:image/png;base64,"))) {
-      stop("Rendered ", chart_type, " image bank contains a non-PNG data URI.", call. = FALSE)
-    }
-    decoded <- lapply(sub("^data:image/png;base64,", "", values), base64enc::base64decode)
-    sizes <- vapply(decoded, length, integer(1))
-    hashes <- vapply(
-      decoded,
-      digest::digest,
-      character(1),
-      algo = "sha256",
-      serialize = FALSE
-    )
-    if (!identical(as.numeric(sizes), as.numeric(rows$bytes)) || !identical(unname(hashes), rows$sha256)) {
-      stop("Rendered ", chart_type, " image bank differs from the supplied PNG assets.", call. = FALSE)
-    }
-  }
-  invisible(TRUE)
-}
-
-reference_validate_output_payloads <- function(html, reports) {
+reference_validate_output_payloads <- function(html, reports, project_root = ".") {
   generated <- reference_payloads_from_reports(reports)
   output_indicators <- reference_extract_output_json(html, "indicatorRows", "classifications")
-  output_classifications <- reference_extract_output_json(html, "classifications", "purpleScale")
+  output_classifications <- reference_extract_output_json(html, "classifications", "mortalityRows")
+  output_mortality <- reference_extract_output_json(html, "mortalityRows", "purpleScale")
   reference_compare_frames(
     generated$indicator_rows,
     output_indicators,
     keys = c("country", "indicator", "adminName"),
-    text_fields = c("direction", "adminLevel"),
+    text_fields = c("direction", "adminLevel", "baselineDisplayYear", "latestDisplayYear", "surveySource"),
     numeric_fields = c(
-      "latestYear", "baselineYear", "baselineEstimate", "observedLatestEstimate", "ppChange10yr",
+      "latestYear", "baselineYear", "baselineEstimate", "baselineCiL", "baselineCiU",
+      "observedLatestEstimate", "latestCiL", "latestCiU", "ppChange10yr",
       "ppChange10yrRecoded", "changeRank", "prevalenceRank"
     )
   )
@@ -404,6 +342,13 @@ reference_validate_output_payloads <- function(html, reports) {
   if (nrow(nigeria_indicators) != 296L || nrow(nigeria_classifications) != 296L) {
     stop("Rendered Nigeria bivariate payload is incomplete.", call. = FALSE)
   }
+  reference_compare_frames(
+    reference_mortality_profile_rows(reports, project_root),
+    output_mortality,
+    keys = c("country", "adminName", "indicator"),
+    text_fields = character(),
+    numeric_fields = "value"
+  )
   invisible(TRUE)
 }
 
@@ -422,11 +367,11 @@ reference_validate_html <- function(html, reports, output = FALSE) {
     for (id in c("ethiopia-counts", "nigeria-counts")) {
       if (!grepl(paste0('id="', id, '"'), html, fixed = TRUE)) stop("Missing section: ", id, call. = FALSE)
     }
-    stopifnot(reference_fixed_count("<svg", html) == 16L)
+    stopifnot(reference_fixed_count('<svg class="geo-map"', html) == 15L)
     stopifnot(reference_fixed_count('<use class="map-region', html) == 370L)
     stopifnot(reference_fixed_count('<span>04</span>Worsening count</a>', html) == 3L)
   } else {
-    stopifnot(reference_fixed_count("<svg", html) == 14L)
+    stopifnot(reference_fixed_count('<svg class="geo-map"', html) == 13L)
     stopifnot(reference_fixed_count('<use class="map-region', html) == 322L)
     stopifnot(reference_fixed_count("{{ETHIOPIA_COUNT_SECTION}}", html) == 1L)
     stopifnot(reference_fixed_count("{{NIGERIA_COUNT_SECTION}}", html) == 1L)
@@ -442,16 +387,7 @@ reference_validate_html <- function(html, reports, output = FALSE) {
   if (length(script_src_tags) == 1L && identical(script_src_tags[[1]], character(0))) {
     script_src_tags <- character()
   }
-  if (output) {
-    stopifnot(length(script_src_tags) >= 2L)
-    stopifnot(all(grepl(
-      '^<script src="\\.\\./assets/js/profile_images_(profiles|change)_[0-9]{2}\\.js"></script>$',
-      script_src_tags,
-      perl = TRUE
-    )))
-  } else {
-    stopifnot(!length(script_src_tags))
-  }
+  stopifnot(!length(script_src_tags))
   marker <- paste0("co", "dex")
   searchable_html <- gsub(
     "data:image/png;base64,[A-Za-z0-9+/=]+", "[embedded image]", html, perl = TRUE
@@ -460,8 +396,10 @@ reference_validate_html <- function(html, reports, output = FALSE) {
   if (output) {
     stopifnot(reference_fixed_count("data:image/png;base64,", html) == 0L)
     stopifnot(!grepl("{{[A-Z_]+}}", html, perl = TRUE))
-    stopifnot(grepl("const provinceImagesPrevalence = profileImageAssets.profiles || {};", html, fixed = TRUE))
-    stopifnot(grepl("const provinceImagesChange = profileImageAssets.change || {};", html, fixed = TRUE))
+    stopifnot(grepl("function buildPrevalenceProfile", html, fixed = TRUE))
+    stopifnot(grepl("function buildChangeProfile", html, fixed = TRUE))
+    stopifnot(grepl("const mortalityRows = [", html, fixed = TRUE))
+    stopifnot(!grepl("Goal1ProfileImages", html, fixed = TRUE))
   }
   reference_validate_rank_maps(reports, html)
   countries_with_count_maps <- if (output) names(reports) else "DRC"
@@ -477,7 +415,6 @@ reference_validate_html <- function(html, reports, output = FALSE) {
 validate_reference_source_alignment <- function(reports, project_root = ".", output_file = NULL) {
   reference_validate_payloads(reports, project_root)
   validate_supplied_profile_sources(reports, project_root)
-  reference_validate_image_banks(reports, project_root)
   template_html <- reference_read_utf8(
     file.path(project_root, "assets", "templates", "reference_dashboard.template.html")
   )
@@ -485,8 +422,7 @@ validate_reference_source_alignment <- function(reports, project_root = ".", out
   if (!is.null(output_file)) {
     output_html <- reference_read_utf8(output_file)
     reference_validate_html(output_html, reports, output = TRUE)
-    reference_validate_output_payloads(output_html, reports)
-    reference_validate_output_image_banks(output_html, reports, project_root)
+    reference_validate_output_payloads(output_html, reports, project_root)
   }
   invisible(TRUE)
 }

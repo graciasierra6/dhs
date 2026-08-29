@@ -11,8 +11,8 @@ This inventory covers every source and artifact needed to rebuild
 | `data/composite_indicator_rankings.csv` | Standard composite prevalence/change scores and ranks | Yes |
 | `data/subnational_indicator_rankings.csv` | Indicator values, ranks, and risk-aligned changes | Yes |
 | `data/mortalityunder5.csv` | One-to-one U5MR matching audit for all mapped areas | Yes |
-| `data/source/region_profile_numbers.csv` | Exact indicator values, confidence intervals, ranks, and distribution summaries used by the supplied profile PNGs | Validation |
-| `data/source/region_profile_mortality.csv` | Exact IMR, NMR, and U5MR values used in the lower block of the supplied profile PNGs | Validation |
+| `data/source/region_profile_numbers.csv` | Indicator values, confidence intervals, ranks, and country-specific distribution summaries checked before profile generation | Yes |
+| `data/source/region_profile_mortality.csv` | IMR, NMR, and U5MR values embedded for the generated profile distributions | Yes |
 | `data/profile_indicator_estimates.csv` | Endpoint estimates, source labels, and 95% confidence intervals | Yes |
 | `data/worsening_count_threshold_distributions.csv` | Derived risk-change distributions, 25th-percentile thresholds, and classifications | Generated and validated |
 | `assets/geo/drc-adm1.geojson` | DRC province boundaries | Validation |
@@ -78,13 +78,14 @@ compared by `validate.R`.
 The CSV download preserves the source years. Some profile graphics use the
 presentation display-year labels retained in the supplied reference.
 
-## Supplied profile sources
+## Profile-chart sources
 
 `region_profile_numbers.csv` contains 581 rows: one latest indicator record for
 every displayed country, area, and indicator. `region_profile_mortality.csv`
-contains 222 rows: IMR, NMR, and U5MR for all 74 areas. The mortality rows are
-already rendered as the lower distribution block in each supplied profile PNG;
-they are not added as separate browser-generated charts.
+contains 222 rows: IMR, NMR, and U5MR for all 74 areas. The build embeds the
+validated values in the final HTML. When an area is selected, browser-native SVG
+renders the country-specific indicator and mortality distributions from those
+numbers; no raster profile image is required.
 
 The latest U5MR values are also checked against `data/mortalityunder5.csv` using
 the following filters:
@@ -104,25 +105,24 @@ existing audit input.
 
 | File | Contents | Role |
 |---|---|---|
-| `reference/reference_dashboard.html` | User-supplied final HTML benchmark | Audit/reference only |
+| `reference/reference_dashboard.html` | User-supplied final HTML benchmark, retained in the local large-reference backup | Optional audit/reference only; not uploaded |
 | `assets/templates/reference_dashboard.template.html` | Exact body, map, and layout markup | Render input |
 | `assets/css/reference_dashboard.css` | Exact reference CSS | Render input |
-| `assets/js/reference_dashboard.template.js` | Exact interaction code with generated-data placeholders | Render input |
-| `assets/profile-plots-profiles.zip` | 74 exact supplied profile PNGs, including their mortality block | Render input |
-| `assets/profile-plots-change.zip` | 74 exact supplied change PNGs | Render input |
-| `assets/js/profile_images_profiles_01.js` and `profile_images_profiles_02.js` | Exact profile PNG data split into browser-upload-sized runtime bundles | Generated and validated |
-| `assets/js/profile_images_change_01.js` | Exact change PNG data in a browser-upload-sized runtime bundle | Generated and validated |
-| `artifacts/profile_images_manifest.csv` | Area, chart type, source-relative path, dimensions, byte size, and SHA-256 | Validation |
+| `assets/js/reference_dashboard.template.js` | Interaction logic, source-generated SVG profiles, and data placeholders | Render input |
+| `assets/profile-plots-profiles.zip` | All 74 supplied prevalence-profile PNGs, retained in the local large-reference backup | Optional visual provenance only; not uploaded |
+| `artifacts/profile_images_manifest.csv` | Supplied 74-profile and 74-change image inventory | Preserves and validates the reference-image inventory without requiring the large archives |
 | `artifacts/reference_payloads/indicatorRows.json` | Supplied indicator payload | Parity validation only |
 | `artifacts/reference_payloads/classifications.json` | Supplied classification payload | Parity validation only |
 | `artifacts/reference_manifest.json` | Reference file and structural counts | Audit |
 
-The supplied asset archives contain exactly one profile and one change PNG for
-every one of the 74 areas. The build reads the PNGs directly from the ZIPs without
-extracting them. Their names, formats, dimensions, sizes, hashes, and one-to-one
-assignments are validated against the committed manifest.
-The numerical data and downloaded CSVs are regenerated from the CSV inputs, not
-read from those images.
+The renderer does not embed image archives or generate image-bundle sidecars.
+`validate.R` validates the committed manifest and, when a local prevalence
+archive is present, also inventories that archive exactly against the manifest.
+Prevalence and change profiles, their numerical labels, confidence intervals,
+and downloaded CSVs are generated from the validated CSV inputs. This keeps the
+final HTML self-contained and below the enforced 10,000,000-byte limit. The
+retained prevalence PNGs alone would require about 31.3 MiB as base64; both PNG
+collections would require about 48.8 MiB before the rest of the dashboard.
 
 ## Upstream source artifacts
 
@@ -134,8 +134,8 @@ inputs:
 - `nutrition_zd_malaria_under20agefirstBTH_estimates_DHS.csv`;
 - `region_profile_numbers.csv`;
 - `region_profile_mortality.csv`; and
-- the complete supplied profile and change PNG collection, consolidated in the
-  two `assets/profile-plots-*.zip` archives.
+- an optional archived legacy profile-PNG collection retained only for visual
+  provenance.
 
 `scripts/prepare_profile_input.py` documents regeneration of
 `data/profile_indicator_estimates.csv` from the two indicator-estimate sources.
