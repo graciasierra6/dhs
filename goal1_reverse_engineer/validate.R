@@ -16,6 +16,7 @@ source(file.path(project_root, "R", "profile_assets.R"), encoding = "UTF-8")
 source(file.path(project_root, "R", "reference_validation.R"), encoding = "UTF-8")
 source(file.path(project_root, "R", "threshold_distribution.R"), encoding = "UTF-8")
 source(file.path(project_root, "R", "risk_alignment_validation.R"), encoding = "UTF-8")
+source(file.path(project_root, "R", "worsening_count_validation.R"), encoding = "UTF-8")
 
 reports <- prepare_all_report_data(
   input_file = file.path(project_root, "data", "count_map_input_combined_master.csv"),
@@ -142,6 +143,14 @@ if (!file.exists(output_file)) {
   stop("Missing rendered dashboard. Run Rscript render.R first.", call. = FALSE)
 }
 rendered_html <- reference_read_utf8(output_file)
+worsening_count_audit <- validate_worsening_count_maps(
+  reports = reports,
+  distribution = actual_distribution,
+  html_text = rendered_html,
+  verbose = FALSE
+)
+stopifnot(nrow(worsening_count_audit$indicators) == 23L)
+stopifnot(nrow(worsening_count_audit$areas) == 74L)
 rendered_raw <- readBin(output_file, what = "raw", n = file.info(output_file)$size)
 raw_contains <- function(haystack, needle) {
   length(grepRaw(as.raw(needle), haystack, fixed = TRUE, all = TRUE)) > 0L
@@ -231,6 +240,16 @@ validate_reference_source_alignment(reports, project_root = project_root, output
 stopifnot(file.info(output_file)$size < 10000000L)
 stopifnot(!grepl('<script src="', rendered_html, fixed = TRUE))
 map_result <- validate_map_build(project_root = project_root, online = FALSE, verbose = FALSE)
+stopifnot(nrow(map_result$areas) == 74L)
+stopifnot(identical(
+  as.integer(table(map_result$areas$country)[c("DRC", "Ethiopia", "Nigeria")]),
+  c(26L, 11L, 37L)
+))
+stopifnot(all(map_result$areas$public_name_match))
+stopifnot(all(map_result$areas$subdivision_code_match))
+stopifnot(all(map_result$areas$public_shape_id_match))
+stopifnot(all(map_result$areas$pinned_location_match))
+stopifnot(all(map_result$areas$rendered_name_shape_match))
 
 upload_files <- list.files(
   project_root,
@@ -249,12 +268,12 @@ stopifnot(all(upload_sizes < 25L * 1024L * 1024L))
 
 cat(
   "Validation passed: 74 administrative areas; 581 source-aligned indicator rows; ",
-  "581-row worsening-threshold distribution CSV; 581 country- and indicator-specific risk classifications; ",
+  "581-row worsening-threshold distribution CSV; 23 independently recomputed country-indicator distributions; 581 country- and indicator-specific risk classifications; ",
   "74 source-driven prevalence profiles and 74 source-driven risk-aligned change profiles; 74 supplied prevalence-profile manifest records; 581 supplied profile-number rows with exact CI agreement; ",
   "222 supplied IMR/NMR/U5MR profile rows; ",
-  "six composite rank maps, three country-specific worsening-count maps, three bivariate sections, ",
+  "six composite rank maps, three independently audited worsening-count maps, three bivariate sections, ",
   "77 complete country-specific indicator pairs in both bivariate modes; 581 independently risk-aligned endpoint records; ",
-  "state-name and geometry joins; ",
+  "74 ADM1 public names, subdivision codes, pinned locations, and rendered name-to-shape joins; ",
   map_result$checks, " boundary checks; ", length(upload_files),
   " uploadable project files; self-contained dashboard below 10 MB with no external network data requests, absolute paths, or machine identifiers.\n",
   sep = ""

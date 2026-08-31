@@ -143,50 +143,84 @@ validate_endpoint_lineage <- function(master, indicators, definitions, country, 
   endpoint_rows <- lapply(definitions$id, function(indicator_id) {
     indicator_rows <- indicators[indicators$indicator == indicator_id, , drop = FALSE]
     master_rows <- master[master$indicator == indicator_id, , drop = FALSE]
-    latest_years <- unique(indicator_rows$latest_year)
-    if (length(latest_years) != 1L) {
-      stop(country, " ", indicator_id, " has inconsistent latest years in the ranking input.", call. = FALSE)
+    expected_direction <- definitions$direction[definitions$id == indicator_id]
+    if (length(expected_direction) != 1L || !all(indicator_rows$direction == expected_direction)) {
+      stop(country, " ", indicator_id, " direction does not match the indicator definition.", call. = FALSE)
     }
+
+    baseline_years <- unique(indicator_rows$baseline_year)
+    latest_years <- unique(indicator_rows$latest_year)
+    if (length(baseline_years) != 1L || length(latest_years) != 1L) {
+      stop(country, " ", indicator_id, " has inconsistent endpoint years in the ranking input.", call. = FALSE)
+    }
+    baseline_year <- as.integer(baseline_years)
     latest_year <- as.integer(latest_years)
+
+    baseline_master <- master_rows[
+      master_rows$survey_year == baseline_year,
+      c("admin_name", "estimate"),
+      drop = FALSE
+    ]
+    names(baseline_master)[2] <- "master_baseline_estimate"
     latest_master <- master_rows[master_rows$survey_year == latest_year, c("admin_name", "estimate"), drop = FALSE]
     names(latest_master)[2] <- "master_latest_estimate"
-    latest_check <- merge(
-      indicator_rows[c("admin_name", "observed_latest_estimate")],
+
+    endpoint_check <- merge(
+      indicator_rows[c(
+        "admin_name", "baseline_estimate", "observed_latest_estimate", "pp_change_10yr",
+        "recoded_baseline_estimate", "recoded_observed_latest", "pp_change_10yr_recoded"
+      )],
+      baseline_master,
+      by = "admin_name",
+      all.x = TRUE,
+      sort = FALSE
+    )
+    endpoint_check <- merge(
+      endpoint_check,
       latest_master,
       by = "admin_name",
       all.x = TRUE,
       sort = FALSE
     )
-    if (nrow(latest_check) != nrow(indicator_rows) || anyNA(latest_check$master_latest_estimate)) {
-      stop(country, " ", indicator_id, " latest values do not fully match the master input.", call. = FALSE)
-    }
-    latest_error <- max(abs(latest_check$observed_latest_estimate - latest_check$master_latest_estimate))
-    if (!is.finite(latest_error) || latest_error > tolerance) {
-      stop(country, " ", indicator_id, " latest values differ from the master input.", call. = FALSE)
+    if (
+      nrow(endpoint_check) != nrow(indicator_rows) ||
+      anyNA(endpoint_check$master_baseline_estimate) ||
+      anyNA(endpoint_check$master_latest_estimate)
+    ) {
+      stop(country, " ", indicator_id, " endpoint values do not fully match the master input.", call. = FALSE)
     }
 
-    candidate_years <- sort(unique(master_rows$survey_year[master_rows$survey_year < latest_year]), decreasing = TRUE)
-    matching_years <- candidate_years[vapply(candidate_years, function(baseline_year) {
-      baseline_master <- master_rows[master_rows$survey_year == baseline_year, c("admin_name", "estimate"), drop = FALSE]
-      names(baseline_master)[2] <- "baseline_estimate"
-      endpoint_check <- merge(latest_master, baseline_master, by = "admin_name", all = FALSE, sort = FALSE)
-      endpoint_check <- merge(
-        endpoint_check,
-        indicator_rows[c("admin_name", "pp_change_10yr_recoded")],
-        by = "admin_name",
-        all = FALSE,
-        sort = FALSE
+    raw_change <- endpoint_check$master_latest_estimate - endpoint_check$master_baseline_estimate
+    risk_change <- if (identical(expected_direction, "beneficial")) -raw_change else raw_change
+    recoded_baseline <- if (identical(expected_direction, "beneficial")) {
+      100 - endpoint_check$master_baseline_estimate
+    } else endpoint_check$master_baseline_estimate
+    recoded_latest <- if (identical(expected_direction, "beneficial")) {
+      100 - endpoint_check$master_latest_estimate
+    } else endpoint_check$master_latest_estimate
+
+    comparisons <- list(
+      baseline_estimate = endpoint_check$baseline_estimate - endpoint_check$master_baseline_estimate,
+      observed_latest_estimate = endpoint_check$observed_latest_estimate - endpoint_check$master_latest_estimate,
+      pp_change_10yr = endpoint_check$pp_change_10yr - raw_change,
+      recoded_baseline_estimate = endpoint_check$recoded_baseline_estimate - recoded_baseline,
+      recoded_observed_latest = endpoint_check$recoded_observed_latest - recoded_latest,
+      pp_change_10yr_recoded = endpoint_check$pp_change_10yr_recoded - risk_change
+    )
+    errors <- vapply(comparisons, function(value) {
+      if (any(!is.finite(value))) Inf else max(abs(value))
+    }, numeric(1))
+    if (any(errors > tolerance)) {
+      failed <- names(errors)[errors > tolerance]
+      stop(
+        country, " ", indicator_id,
+        " ranking endpoints differ from the source master for: ",
+        paste(failed, collapse = ", "),
+        ".",
+        call. = FALSE
       )
-      if (nrow(endpoint_check) != nrow(indicator_rows)) return(FALSE)
-      raw_change <- endpoint_check$master_latest_estimate - endpoint_check$baseline_estimate
-      risk_change <- if (definitions$direction[definitions$id == indicator_id] == "beneficial") -raw_change else raw_change
-      error <- max(abs(risk_change - endpoint_check$pp_change_10yr_recoded))
-      is.finite(error) && error <= tolerance
-    }, logical(1))]
-    if (!length(matching_years)) {
-      stop(country, " ", indicator_id, " change values do not match any master-input endpoint pair.", call. = FALSE)
     }
-    baseline_year <- max(matching_years)
+
     data.frame(
       indicator = indicator_id,
       baseline_year = baseline_year,
@@ -300,8 +334,13 @@ prepare_country_data <- function(master_all, composite_all, indicator_all, profi
     , drop = FALSE
   ]
   indicators$admin_name <- canonical_admin(country, indicators$admin_name)
+  indicators$baseline_year <- as.integer(indicators$baseline_year)
   indicators$latest_year <- as.integer(indicators$latest_year)
+  indicators$baseline_estimate <- as.numeric(indicators$baseline_estimate)
   indicators$observed_latest_estimate <- as.numeric(indicators$observed_latest_estimate)
+  indicators$pp_change_10yr <- as.numeric(indicators$pp_change_10yr)
+  indicators$recoded_baseline_estimate <- as.numeric(indicators$recoded_baseline_estimate)
+  indicators$recoded_observed_latest <- as.numeric(indicators$recoded_observed_latest)
   indicators$pp_change_10yr_recoded <- as.numeric(indicators$pp_change_10yr_recoded)
   indicators$prevalence_rank <- as.numeric(indicators$prevalence_rank)
   indicators$change_rank <- as.numeric(indicators$change_rank)
@@ -419,8 +458,9 @@ prepare_all_report_data <- function(
   indicator_all <- read_report_csv(
     indicator_file,
     c(
-      "country", "indicator", "direction", "admin_name", "latest_year", "observed_latest_estimate",
-      "pp_change_10yr_recoded", "prevalence_rank", "change_rank"
+      "country", "indicator", "direction", "admin_name", "baseline_year", "baseline_estimate",
+      "latest_year", "observed_latest_estimate", "pp_change_10yr", "recoded_baseline_estimate",
+      "recoded_observed_latest", "pp_change_10yr_recoded", "prevalence_rank", "change_rank"
     ),
     "subnational indicator ranking input"
   )

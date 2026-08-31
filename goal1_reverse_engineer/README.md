@@ -9,6 +9,8 @@ The output is self-contained and works when opened directly in a current
 browser. It has no external data requests, local-machine paths, or runtime
 sidecar files. The current clean build is approximately 2.5 MB.
 
+Full source-to-output documentation is in `DATA_LINEAGE.md`.
+
 ## Rebuild on another computer
 
 ### Requirements
@@ -43,6 +45,15 @@ Rscript -e "renv::restore(prompt=FALSE)"
 Rscript render.R
 Rscript validate.R
 Rscript scripts/audit_risk_alignment.R
+Rscript scripts/validate_worsening_count_maps.R
+```
+
+For the optional direct reconciliation of all ranked baseline/latest values
+against the original nutrition CSV and health-systems Excel workbook, install
+Python with `pandas` and `openpyxl`, then run:
+
+```sh
+python scripts/validate_indicator_source_lineage.py
 ```
 
 All build paths are relative to the project root. The project does not use
@@ -127,7 +138,12 @@ Ethiopia malaria-RDT series.
 
 - 74 administrative areas and 581 indicator records;
 - all source values, endpoint years, confidence intervals, risk directions,
-  ranks, thresholds, classifications, and worsening counts;
+  raw and recoded endpoint changes, ranks, thresholds, classifications, and
+  worsening counts;
+- all 23 country-indicator distributions independently recalculated into 581
+  improving/non-significant/worsening classifications, followed through to all
+  74 rendered count-map tooltips, indicator-membership lists, legend buckets,
+  and fills;
 - all 23 country-indicator prevalence maps, including country-specific
   area/value coverage, alphabetical controls, and non-degenerate risk-aligned
   color distributions;
@@ -149,6 +165,16 @@ For an optional live comparison with the current public boundary downloads:
 ```sh
 Rscript scripts/validate_maps.R --online
 ```
+
+To print the complete 74-area name, public-name, subdivision-code, shape-ID,
+center-coordinate, and rendered-occurrence audit:
+
+```sh
+Rscript scripts/validate_maps.R --details
+```
+
+Both options can be combined as `Rscript scripts/validate_maps.R --online
+--details`.
 
 ## Project structure
 

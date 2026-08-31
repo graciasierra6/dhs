@@ -78,9 +78,49 @@ validate_map_build <- function(
   check(!anyDuplicated(references[c("country", "dashboard_name")]), "dashboard area names are duplicated")
   check(!anyDuplicated(references[c("country", "shape_iso")]), "public ADM1 codes are duplicated")
   check(!anyDuplicated(references$shape_id), "public geoBoundaries shape IDs are duplicated")
+  required_reference_text <- c(
+    "country", "iso3", "public_shape_name", "dashboard_name", "shape_iso", "shape_id"
+  )
+  required_reference_numeric <- c(
+    "feature_index", "bbox_min_lon", "bbox_min_lat", "bbox_max_lon", "bbox_max_lat",
+    "bbox_center_lon", "bbox_center_lat"
+  )
+  check(
+    all(required_reference_text %in% names(references)) &&
+      all(required_reference_numeric %in% names(references)),
+    "the feature reference is missing required name, code, or location fields"
+  )
+  check(
+    all(vapply(references[required_reference_text], function(value) {
+      all(!is.na(value) & nzchar(trimws(as.character(value))))
+    }, logical(1))),
+    "the feature reference contains a blank public or dashboard identifier"
+  )
+  check(
+    all(vapply(references[required_reference_numeric], function(value) {
+      all(is.finite(as.numeric(value)))
+    }, logical(1))),
+    "the feature reference contains a missing or invalid location coordinate"
+  )
+  check(
+    all(references$bbox_min_lon < references$bbox_max_lon) &&
+      all(references$bbox_min_lat < references$bbox_max_lat),
+    "the feature reference contains an invalid bounding box"
+  )
+  check(
+    max(abs(references$bbox_center_lon - (references$bbox_min_lon + references$bbox_max_lon) / 2)) <= 1e-8 &&
+      max(abs(references$bbox_center_lat - (references$bbox_min_lat + references$bbox_max_lat) / 2)) <= 1e-8,
+    "the feature-reference centers do not equal their bounding-box centers"
+  )
+  check(
+    all(grepl("^[A-Z]{2}-[A-Z0-9]+$", references$shape_iso)),
+    "the public ADM1 subdivision codes are malformed"
+  )
 
   expected_dashboard_names <- list()
   expected_dashboard_ids <- list()
+  area_audit_rows <- vector("list", nrow(references))
+  area_audit_index <- 0L
 
   for (layer_index in seq_len(nrow(layers))) {
     layer <- layers[layer_index, , drop = FALSE]
@@ -131,6 +171,28 @@ validate_map_build <- function(
         max(abs(center - c(reference$bbox_center_lon, reference$bbox_center_lat))) <= 1e-8,
         paste(country, reference$dashboard_name, "reference location center mismatch")
       )
+
+      area_audit_index <- area_audit_index + 1L
+      area_audit_rows[[area_audit_index]] <- data.frame(
+        country = country,
+        iso3 = layer$iso3,
+        dashboard_name = reference$dashboard_name,
+        public_shape_name = properties$shapeName,
+        shape_iso = properties$shapeISO,
+        shape_id = properties$shapeID,
+        feature_index = expected_index,
+        geometry_type = feature$geometry$type,
+        bbox_center_lon = center[[1]],
+        bbox_center_lat = center[[2]],
+        maximum_bbox_error = max(abs(as.numeric(bbox) - expected_bbox)),
+        public_name_match = identical(properties$shapeName, reference$public_shape_name),
+        subdivision_code_match = identical(properties$shapeISO, reference$shape_iso),
+        public_shape_id_match = identical(properties$shapeID, reference$shape_id),
+        pinned_location_match = max(abs(as.numeric(bbox) - expected_bbox)) <= 1e-8,
+        render_occurrences = 0L,
+        rendered_name_shape_match = FALSE,
+        stringsAsFactors = FALSE
+      )
     }
 
     expected_dashboard_names[[country]] <- country_reference$dashboard_name
@@ -153,6 +215,9 @@ validate_map_build <- function(
       )
     }
   }
+  area_audit <- do.call(rbind, area_audit_rows)
+  rownames(area_audit) <- NULL
+  check(nrow(area_audit) == 74L, "the ADM1 name-location audit must contain exactly 74 areas")
 
   composite_path <- file.path(root, "data", "composite_indicator_rankings.csv")
   indicators_path <- file.path(root, "data", "subnational_indicator_rankings.csv")
@@ -166,6 +231,42 @@ validate_map_build <- function(
     indicator_names <- sort(unique(indicators$admin_name[indicators$country == country]))
     check(identical(composite_names, public_names), paste(country, "composite names do not match public ADM1 areas"))
     check(identical(indicator_names, public_names), paste(country, "indicator names do not match public ADM1 areas"))
+  }
+
+  name_coverage_files <- list(
+    list(
+      path = file.path(root, "data", "worsening_count_threshold_distributions.csv"),
+      label = "worsening-threshold audit"
+    ),
+    list(
+      path = file.path(root, "data", "source", "region_profile_numbers.csv"),
+      label = "indicator profile-number source"
+    ),
+    list(
+      path = file.path(root, "data", "source", "region_profile_mortality.csv"),
+      label = "mortality profile source"
+    )
+  )
+  for (coverage_file in name_coverage_files) {
+    check(file.exists(coverage_file$path), paste(coverage_file$label, "is missing"))
+    coverage <- utils::read.csv(
+      coverage_file$path,
+      stringsAsFactors = FALSE,
+      fileEncoding = "UTF-8",
+      check.names = FALSE
+    )
+    check(
+      all(c("country", "admin_name") %in% names(coverage)),
+      paste(coverage_file$label, "is missing country or admin_name")
+    )
+    for (country in names(expected_dashboard_names)) {
+      expected_names <- sort(expected_dashboard_names[[country]])
+      actual_names <- sort(unique(coverage$admin_name[coverage$country == country]))
+      check(
+        identical(actual_names, expected_names),
+        paste(country, coverage_file$label, "names do not match the pinned ADM1 areas")
+      )
+    }
   }
 
   if (is.null(html_path)) html_path <- file.path(root, "output", "goal1_reverse_engineer_test.html")
@@ -229,8 +330,22 @@ validate_map_build <- function(
         map_validation_fixed_count(paste0('id="', expected_id, '"'), html) == 1L,
         paste(country, expected_name, "SVG geometry definition is missing or duplicated")
       )
+      audit_index <- which(
+        area_audit$country == country & area_audit$dashboard_name == expected_name
+      )
+      check(length(audit_index) == 1L, paste(country, expected_name, "is missing from the ADM1 audit"))
+      area_audit$render_occurrences[audit_index] <- pair_count
+      area_audit$rendered_name_shape_match[audit_index] <- pair_count == uses_per_country[[country]]
     }
   }
+  check(
+    all(area_audit$public_name_match) &&
+      all(area_audit$subdivision_code_match) &&
+      all(area_audit$public_shape_id_match) &&
+      all(area_audit$pinned_location_match) &&
+      all(area_audit$rendered_name_shape_match),
+    "the final ADM1 audit contains a failed name, code, location, or rendered shape match"
+  )
 
   if (isTRUE(verbose)) {
     cat(
@@ -240,5 +355,5 @@ validate_map_build <- function(
       if (isTRUE(online)) "Public geoBoundaries downloads rechecked online.\n" else "Pinned public-source hashes checked offline.\n"
     )
   }
-  invisible(list(checks = state$checks, online = isTRUE(online)))
+  invisible(list(checks = state$checks, online = isTRUE(online), areas = area_audit))
 }

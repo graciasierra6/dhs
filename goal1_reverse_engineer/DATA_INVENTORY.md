@@ -3,6 +3,9 @@
 This inventory covers every source and artifact needed to rebuild
 `output/goal1_reverse_engineer_test.html`.
 
+See `DATA_LINEAGE.md` for the complete field-level source and transformation
+trace.
+
 ## Build-ready inputs
 
 | File | Purpose | Used during every build |
@@ -140,6 +143,11 @@ inputs:
 `scripts/prepare_profile_input.py` documents regeneration of
 `data/profile_indicator_estimates.csv` from the two indicator-estimate sources.
 Routine builds use the committed normalized CSV and do not require Python.
+
+`scripts/validate_indicator_source_lineage.py` directly reconciles all 1,520
+standard-indicator endpoint rows and all 581 ranked area-indicator rows against
+the nutrition CSV and the `in` sheet of the health-systems workbook. It requires
+Python with `pandas` and `openpyxl` and does not modify project files.
 
 ## Boundary provenance
 
