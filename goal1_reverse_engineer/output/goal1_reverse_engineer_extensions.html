@@ -2799,6 +2799,84 @@ footer {
 .analysis-section[id$="-counts"] .geo-map {
   height: auto;
   aspect-ratio: 720 / 460;
+}
+
+/* Match bivariate map dimensions to the standard overview-map footprint. */
+.bivariate-grid-layout {
+  grid-template-columns: minmax(0, 1.75fr) minmax(270px, 0.55fr);
+  column-gap: 30px;
+  align-items: start;
+}
+
+.bivariate-map {
+  grid-column: 1;
+  min-height: 0;
+  padding: 22px 132px 22px 22px;
+}
+
+.bivariate-map .geo-map {
+  height: auto;
+  aspect-ratio: 720 / 460;
+  margin-top: 15px;
+}
+
+.bivariate-side-legend {
+  top: 50%;
+  right: auto;
+  left: calc(100% + 30px);
+  width: 270px;
+  transform: translateY(-45%);
+}
+
+@media (min-width: 901px) and (max-width: 1500px) {
+  .bivariate-grid-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(245px, 0.34fr);
+    column-gap: 24px;
+  }
+
+  .bivariate-map {
+    padding-right: 92px;
+    padding-left: 14px;
+  }
+
+  .bivariate-side-legend {
+    left: calc(100% + 24px);
+    width: 245px;
+  }
+}
+
+@media (max-width: 900px) {
+  .bivariate-grid-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .bivariate-map {
+    padding: 22px 132px 22px 22px;
+  }
+
+  .bivariate-side-legend {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    width: auto;
+    margin-top: 18px;
+    transform: none;
+  }
+}
+
+@media (min-width: 621px) and (max-width: 900px) {
+  .bivariate-map {
+    padding-right: 102px;
+    padding-left: 12px;
+  }
+}
+
+@media (max-width: 560px) {
+  .bivariate-map {
+    padding: 20px 90px 16px 10px;
+  }
 }</style></head>
 <body>
 <div class="dashboard-frame">
