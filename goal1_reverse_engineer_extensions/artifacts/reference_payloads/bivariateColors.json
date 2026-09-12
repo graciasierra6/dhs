@@ -1,0 +1,11 @@
+{
+  "improving:improving": "#F0EEE4",
+  "inside_threshold:improving": "#E8BC8D",
+  "worsening:improving": "#DF8A36",
+  "improving:inside_threshold": "#80B0A6",
+  "inside_threshold:inside_threshold": "#86856A",
+  "worsening:inside_threshold": "#8C592E",
+  "improving:worsening": "#107369",
+  "inside_threshold:worsening": "#254E48",
+  "worsening:worsening": "#3A2826"
+}
