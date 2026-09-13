@@ -1,0 +1,37 @@
+"Candidate boundary condition","Method","Unweighted episodes","Weighted episodes"
+"Starts exactly 3 months before interview","Injectables",140,212.661479
+"Starts exactly 3 months before interview","Implants",35,25.732795
+"Starts exactly 3 months before interview","Pill",31,22.696977
+"Starts exactly 3 months before interview","Emergency contraception",7,4.981447
+"Starts exactly 3 months before interview","Other",16,13.440806
+"Starts exactly 3 months before interview","All methods",229,279.513504
+"Starts exactly 62 months before interview","Injectables",76,93.689122
+"Starts exactly 62 months before interview","Implants",42,36.772563
+"Starts exactly 62 months before interview","Pill",9,7.032677
+"Starts exactly 62 months before interview","Emergency contraception",0,0
+"Starts exactly 62 months before interview","Other",12,16.863634
+"Starts exactly 62 months before interview","All methods",139,154.357996
+"Left truncated at 62-month boundary","Injectables",612,728.795561
+"Left truncated at 62-month boundary","Implants",335,335.714398
+"Left truncated at 62-month boundary","Pill",65,53.244429
+"Left truncated at 62-month boundary","Emergency contraception",8,3.87613
+"Left truncated at 62-month boundary","Other",55,49.951049
+"Left truncated at 62-month boundary","All methods",1075,1171.581567
+"Ends within final 3 months (censored)","Injectables",1769,2291.175485
+"Ends within final 3 months (censored)","Implants",1308,1360.366027
+"Ends within final 3 months (censored)","Pill",217,253.765174
+"Ends within final 3 months (censored)","Emergency contraception",39,31.45938
+"Ends within final 3 months (censored)","Other",304,301.215457
+"Ends within final 3 months (censored)","All methods",3637,4237.981523
+"Ongoing/censored with no discontinuation","Injectables",1882,2469.69884
+"Ongoing/censored with no discontinuation","Implants",1348,1394.630477
+"Ongoing/censored with no discontinuation","Pill",242,286.641031
+"Ongoing/censored with no discontinuation","Emergency contraception",42,34.226191
+"Ongoing/censored with no discontinuation","Other",314,306.201006
+"Ongoing/censored with no discontinuation","All methods",3828,4491.397545
+"One-month episode","Injectables",96,117.040058
+"One-month episode","Implants",29,37.656064
+"One-month episode","Pill",114,169.663516
+"One-month episode","Emergency contraception",74,111.809532
+"One-month episode","Other",30,33.995668
+"One-month episode","All methods",343,470.164838

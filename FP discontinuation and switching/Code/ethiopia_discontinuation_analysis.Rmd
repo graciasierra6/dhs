@@ -1,0 +1,977 @@
+---
+title: "Ethiopia 2024-25 Contraceptive Calendar Analysis"
+subtitle: "Reproducible initiation, discontinuation, reason, and reinitiation workflow"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    self_contained: true
+    code_folding: show
+    theme: flatly
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  comment = "#>",
+  fig.width = 10,
+  fig.height = 6
+)
+
+rmd_file <- tryCatch(
+  normalizePath(knitr::current_input(dir = TRUE), mustWork = TRUE),
+  error = function(e) NA_character_
+)
+project_dir <- if (!is.na(rmd_file)) {
+  dirname(dirname(rmd_file))
+} else {
+  normalizePath(file.path(".."))
+}
+options(ethiopia_discontinuation_project_dir = project_dir)
+
+input_file <- file.path(project_dir, "Data", "Ethiopia", "ETIR8AFL.dta")
+derived_dir <- file.path(project_dir, "Analyses", "derived")
+output_dir <- file.path(project_dir, "output")
+code_dir <- dirname(rmd_file)
+```
+
+# Purpose and outputs
+
+This R Markdown file is the reproducible entry point for the Ethiopia
+contraceptive-calendar analysis. It documents and executes the complete
+workflow used to generate the analytical CSV files and the self-contained HTML
+report.
+
+The final dashboard is written to:
+
+```text
+output/ethiopia_discontinuation_3_6_9_12.html
+```
+
+The analysis covers:
+
+- observed contraceptive method starts, initiation mix, and initiation rate;
+- all-cause discontinuation at 3, 6, 9, and 12 months;
+- competing-risk cumulative incidence by discontinuation reason;
+- the distribution of reasons among discontinued episodes; and
+- time to contraceptive reinitiation following a non-pregnancy-related
+  discontinuation.
+
+# Input data
+
+The required input is the Ethiopia 2024-25 DHS Individual Recode Stata file:
+
+```{r check-input}
+if (!file.exists(input_file)) {
+  stop(
+    paste0(
+      "Missing Data/Ethiopia/ETIR8AFL.dta. Place the Ethiopia IR file in ",
+      "Data/Ethiopia/ and rerun."
+    )
+  )
+}
+
+file.info(input_file)[, c("size", "mtime")]
+```
+
+Only the variables needed for calendar reconstruction are initially read:
+
+```{r read-data-example, eval=FALSE}
+library(haven)
+
+calendar <- read_dta(
+  input_file,
+  col_select = c(
+    caseid, # anonymized respondent identifier
+    v005,   # DHS woman sampling weight
+    v008,   # interview century-month code
+    v017,   # first calendar month in century-month-code form
+    v018,   # position of the calendar at interview
+    v019,   # calendar length
+    vcal_1, # monthly pregnancy, birth, non-use, and method states
+    vcal_2  # reason recorded when a method-use episode ends
+  )
+)
+
+calendar$weight <- as.numeric(calendar$v005) / 1e6
+```
+
+The executable implementation is maintained in
+`Code/replicate_table_7_11.R`. Keeping one calculation engine prevents the code
+shown in the documentation from drifting away from the code used for results.
+
+# Converting the calendar into episodes
+
+## Monthly calendar orientation
+
+The contraceptive calendar is stored as one character per observed month.
+The code first pads the calendar strings consistently, identifies the observed
+positions for each respondent, and converts each position to a century-month
+code relative to `v008`.
+
+```{r calendar-orientation-example, eval=FALSE}
+start_position <- as.integer(v018)
+end_position <- min(80L, start_position + as.integer(v019) - 1L)
+positions <- seq.int(end_position, start_position, by = -1L)
+
+method_state <- substring(vcal_1, positions, positions)
+reason_state <- substring(vcal_2, positions, positions)
+month_cmc <- as.integer(v008) - (positions - start_position)
+```
+
+## Episode construction
+
+Consecutive months with the same `vcal_1` code are combined into continuous
+events. For each run, the analysis retains:
+
+- respondent identifier;
+- episode start and end century-month codes;
+- episode duration;
+- method code;
+- discontinuation-reason code at the episode endpoint; and
+- DHS sampling weight.
+
+```{r episode-construction-example, eval=FALSE}
+runs <- rle(method_state)
+run_end <- cumsum(runs$lengths)
+run_start <- c(1L, head(run_end, -1L) + 1L)
+
+# For each run j:
+idx <- run_start[j]:run_end[j]
+episode_start <- min(month_cmc[idx])
+episode_end <- max(month_cmc[idx])
+episode_duration <- length(idx)
+
+# The reason is stored in the most recent month of the episode.
+reason_code <- reason_state[max(idx)]
+```
+
+Birth, pregnancy, termination, and non-use runs remain available for temporal
+sequencing but are excluded from the contraceptive discontinuation risk set.
+
+# DHS discontinuation analysis window
+
+The standard DHS rules are applied to the period 3-62 months before interview:
+
+1. Drop events already underway when the oldest calendar month begins because
+   their true start and duration are unknown.
+2. Keep contraceptive method-use episodes and exclude non-use, pregnancy,
+   birth, and termination runs from the discontinuation risk set.
+3. Treat discontinuations during the final three months as censored.
+4. Exclude episodes starting during those final three months.
+5. Exclude episodes that both began and ended before the 62-month boundary.
+6. Allow an episode beginning before the 62-month boundary to contribute when
+   it remained in use into the analysis window, using delayed entry.
+
+```{r dhs-window-example, eval=FALSE}
+months_start_to_interview <- interview_cmc - event_start
+months_end_to_interview <- interview_cmc - event_end
+
+discontinued <- as.integer(reason_code != 0)
+discontinued[months_end_to_interview < 3] <- 0L
+
+entry <- ifelse(
+  months_start_to_interview >= 63,
+  months_start_to_interview - 62,
+  0
+)
+
+keep <- months_start_to_interview >= 3 &
+  !(months_start_to_interview > 62 & months_end_to_interview > 62)
+```
+
+The denominator for a discontinuation probability is therefore the weighted
+life-table risk set of eligible use episodes, not only the episodes that
+discontinued. Episodes leave the risk set when they discontinue or are
+censored.
+
+# Method and reason groupings
+
+The report uses the DHS aggregate method categories:
+
+- Injectables
+- Implants
+- Pill
+- Emergency contraception
+- Other
+- All methods
+
+Reason codes are grouped into nine mutually exclusive causes:
+
+1. Method failure  
+2. Desire to become pregnant  
+3. Other fertility-related reasons  
+4. Changes in menstrual bleeding  
+5. Other side effects or health concerns  
+6. Wanted a more effective method  
+7. Other method-related reasons  
+8. Husband or partner disapproved  
+9. Other reasons
+
+The precise survey-specific mappings are defined and documented in
+`Code/replicate_table_7_11.R`.
+
+# Initiation measures
+
+An observed start is the beginning of a method-use episode for which the
+preceding calendar state is observed. Episodes already underway at the oldest
+calendar boundary are not counted as starts.
+
+Two complementary summaries are produced:
+
+```{r initiation-definitions, echo=FALSE, results='asis'}
+cat(
+  "- **Initiation mix:** weighted starts of a method divided by weighted starts",
+  "of all methods. This describes the composition of observed starts.\n",
+  "- **Initiation rate:** weighted observed starts divided by weighted observed",
+  "calendar woman-months, multiplied by 1,000. This describes how frequently",
+  "method-use episodes begin during observed calendar time.\n"
+)
+```
+
+The initiation analysis is implemented in `code/analyze_initiation.R`.
+
+# Discontinuation estimation
+
+## All-cause discontinuation
+
+All discontinuation reasons are treated as a single endpoint. The cumulative
+probability by month *t* is the weighted life-table quantity `1 - S(t)`.
+
+## Discontinuation by reason
+
+Reason-specific results use a weighted Aalen-Johansen competing-risk life
+table. At each month, the weighted number of events for each reason is divided
+by the weighted risk set. The cause-specific cumulative incidence is updated
+using survival immediately before that month.
+
+```{r competing-risk-example, eval=FALSE}
+cause_increment <- survival_before_month *
+  weighted_cause_events / weighted_risk_set
+
+cumulative_incidence[cause] <-
+  cumulative_incidence[cause] + cause_increment
+
+survival_after_month <- survival_before_month *
+  (1 - weighted_all_cause_events / weighted_risk_set)
+```
+
+The nine cause-specific cumulative incidences sum to the all-cause
+discontinuation probability, subject only to floating-point precision.
+Switching is calculated separately because switching can overlap with a stated
+reason and therefore must not be added to the competing causes.
+
+# Distribution of reasons among discontinuations
+
+For each method, reason, and horizon:
+
+```{r distribution-formula, echo=FALSE, results='asis'}
+cat(
+  "**Reason distribution (%) = reason-specific cumulative incidence /",
+  "any-reason cumulative incidence x 100**"
+)
+```
+
+This is a life-table-adjusted composition of discontinuation reasons, not a
+simple unweighted cross-tabulation of observed events.
+
+# Time to contraceptive reinitiation
+
+The reinitiation sample begins with episodes discontinued for reasons other
+than method failure/pregnancy while using or desire to become pregnant.
+
+- Event of interest: first subsequent contraceptive method-use episode.
+- Competing event: a subsequent pregnancy, birth, or termination before
+  reinitiation.
+- Censoring: interview reached before either event.
+- Time scale: calendar months after the discontinued episode ends. A method
+  beginning in the immediately following month is reinitiation at month 1.
+
+Weighted Aalen-Johansen cumulative incidence is estimated for every month from
+1 through 12. The dashboard shows the complete month-by-month curves and exact
+values, plus a compact summary at 1, 3, 6, 9, and 12 months. A subsequent start
+may be the same method or a different method; method switching is a separate
+classification. The implementation is in `code/analyze_reinitiation.R`.
+
+For each month, the numerator contribution is the weighted number of first
+reinitiations in that month and the denominator is the weighted risk set still
+observed and free of both reinitiation and pregnancy at the start of that
+month. The Aalen-Johansen cumulative incidence sums the month-specific
+reinitiation hazards after multiplying each by the probability of remaining
+event-free through the preceding month. It is therefore not a crude proportion
+with one fixed denominator.
+
+The post-discontinuation destination analysis partitions reinitiation into the
+first method subsequently initiated. Its conditional destination matrix divides
+each destination-specific cumulative incidence by the cumulative incidence of
+reinitiation with any method at the same horizon. Rows therefore sum to 100%
+among estimated reinitiations. A second matrix retains pregnancy and no-event
+outcomes and sums to 100% among all eligible discontinued episodes.
+
+The gap-duration distribution uses the same weighted Aalen-Johansen estimates
+but converts the cumulative reinitiation curve into mutually exclusive time
+bands by differencing successive milestones. Those five bands, pregnancy before
+reinitiation by 12 months, and no observed event by 12 months sum to 100%. The
+method-effectiveness transition separately classifies the first subsequent
+method as higher tier, a different method in the same tier, the same method,
+or a lower tier. This is a descriptive programmatic classification, not a
+judgment about an individual's preferred or clinically appropriate method.
+
+## Reason-linked post-discontinuation outcomes
+
+The reason-linked analysis retains all nine DHS reason groups and asks what
+happens after an episode ends. The starting denominator for each row is all
+observed discontinued episodes assigned to that reason. At each follow-up
+month, the denominator used by the estimator is the survey-weighted risk set
+still observed and free of both reinitiation and pregnancy. Numerator
+contributions are the weighted first reinitiations or first pregnancy-related
+events occurring in that month. Interview is right censoring.
+
+Survey-weighted Aalen-Johansen cumulative incidence is reported at 1, 3, 6,
+and 12 months for reinitiation, pregnancy before reinitiation, and no observed
+event. These three probabilities sum to 100% within every reason and horizon.
+Method failure and desire for pregnancy are retained to show every reason, but
+their reproductive context differs from potentially service-responsive
+discontinuation and must be interpreted separately.
+
+Programmatically, this analysis distinguishes reasons commonly followed by
+prompt switching from reasons followed by prolonged gaps or pregnancy before
+reinitiation. It can inform counseling, side-effect management, referral,
+commodity continuity, and follow-up, but it does not establish that a stated
+reason caused the subsequent outcome.
+
+## Previous method by reason
+
+The previous-method-by-reason analysis repeats the same competing-risk model
+within each method–reason subgroup. The starting denominator is all observed
+discontinued episodes in that cell; monthly risk-set denominators and event
+numerators are defined exactly as above. The dashboard allows the user to
+select outcome and horizon and suppresses cells with fewer than 25 eligible
+episodes; cells with 25–49 episodes are flagged.
+
+This interaction is relevant because an apparently similar reason can imply a
+different service response depending on the discontinued method. The results
+are descriptive associations rather than causal effects. Emergency
+contraception is interpreted separately because it is episodic rather than a
+continuously used method.
+
+# Dashboard section-by-section reading guide
+
+The final dashboard places a visible explanation before the results in every
+section and an expanded reading guide immediately below each table or figure.
+The following documentation records the rows, columns, denominators,
+numerators, estimator, total identities, and programmatic use.
+
+## Section 01: Observed method initiation and dynamic method mix
+
+- **Rows and columns:** The annual-use table has calendar years as rows and
+  annual average monthly prevalence as columns. Initiation tables show weighted
+  observed starts, their distribution by method, and starts per 1,000 observed
+  calendar woman-months. The method-by-year table has discontinuation method
+  categories as rows and calendar years as columns.
+- **Numerator:** For annual use, survey-weighted calendar woman-months coded as
+  any contraceptive use or modern-method use. For initiation, survey-weighted
+  observed starts for a specified method.
+- **Denominator:** All valid observed calendar woman-months in the year for
+  annual use; all weighted observed starts for initiation mix; weighted
+  observed calendar woman-months for initiation rate. Discontinuation uses the
+  separate life-table risk set described in Section 02.
+- **Totals:** Mutually exclusive method shares add to 100%. Rates and counts do
+  not add to 100%. Annual any-method use equals modern plus traditional method
+  use before rounding. Cumulative discontinuation milestones must not be added.
+- **Method and rationale:** Survey-weighted descriptive ratios are appropriate
+  for calendar prevalence and observed starts. Annual calendar prevalence is
+  an average across observed months, not the DHS interview-date current-use
+  estimate. Life-table estimates are needed for discontinuation because episode
+  follow-up and censoring differ.
+- **Programmatic relevance:** Distinguishes uptake from continuity. High
+  initiation with rapid stopping may suggest a need for better method-fit
+  counseling, resupply, or switching support rather than low demand.
+
+## Section 02: All-cause discontinuation and monthly hazards
+
+**Population used for the primary estimates:** These are overall all-cause
+discontinuation estimates for the DHS-style eligible episode population. They
+are not restricted to episodes initiated inside the 3-62-month analysis
+window. Eligible episodes observed at risk during the window can contribute,
+including delayed-entry episodes that began earlier within the recorded
+calendar and continued into the window. Episodes already underway at the
+oldest recorded calendar boundary are excluded because their true initiation
+date and complete duration are unknown. Section 14 provides the separate,
+narrower sensitivity analysis restricted to episodes whose starts and
+immediately preceding calendar states are observed inside the analysis period.
+
+- **Rows and columns:** Method rows show cumulative discontinuation at 3, 6, 9,
+  and 12 months. Monthly columns show the conditional probability of stopping
+  among episodes still continuing at that month's start.
+- **Numerator:** Weighted all-cause discontinuations during month *t*.
+- **Denominator:** Weighted eligible episodes continuing and observable at the
+  start of month *t*, with delayed entry and censoring applied.
+- **Totals:** Cumulative milestones and monthly hazards must not be added.
+  Monthly risk sets change and survival compounds multiplicatively.
+- **Method and rationale:** A weighted discrete-time life table estimates
+  monthly hazards and `1 - S(t)` without imposing a fitted hazard shape.
+- **Programmatic relevance:** Identifies methods and months where counseling,
+  follow-up, side-effect support, or resupply may be most valuable.
+
+## Section 03: Main reasons at each time point
+
+- **Rows and columns:** Each method row lists the three largest reason-specific
+  cumulative incidences at each milestone.
+- **Numerator:** Weighted discontinuations for a reason, accumulated with the
+  probability of having remained event-free beforehand.
+- **Denominator:** Weighted episodes still at risk of discontinuation for any
+  reason at each contributing month.
+- **Totals:** The three displayed leaders do not necessarily total Any reason;
+  other causes are omitted. Values across milestones must not be added.
+- **Method and rationale:** Weighted Aalen-Johansen competing-risk cumulative
+  incidence is used because an episode has one first recorded stopping reason.
+- **Programmatic relevance:** Prioritizes the most prominent reasons by method
+  and duration.
+
+## Section 04: DHS-format discontinuation by reason and method
+
+- **Rows and columns:** Rows are DHS aggregate method categories. Columns are
+  nine mutually exclusive reasons, Any reason, switching, and episode support.
+- **Numerator:** Weighted discontinuations for a reason during each month up to
+  the selected horizon.
+- **Denominator:** Weighted method episodes still at risk at the month's start.
+- **Totals:** Nine reason CIFs add to Any reason. Switching must not be added
+  because it can overlap with a stated reason.
+- **Method and rationale:** Weighted Aalen-Johansen competing-risk estimation
+  mirrors the DHS Table 7.11 structure while accommodating censoring.
+- **Programmatic relevance:** Enables published-report validation and compares
+  absolute reason-specific probabilities across methods.
+
+## Section 05: Cumulative incidence and timing by reason
+
+- **Rows and columns:** Method cards show reason-specific CIFs; monthly heat
+  maps show cause-specific hazards; timing tables show the share of each
+  12-month reason-specific CIF accumulated by months 3, 6, and 9.
+- **Numerator:** Weighted events for the selected cause and month. For timing
+  shares, the numerator is the cause's CIF at the earlier milestone.
+- **Denominator:** The all-cause monthly risk set for hazards and that same
+  cause's 12-month CIF for timing shares.
+- **Totals:** Reason CIFs add to Any reason within a method and horizon. Monthly
+  hazards and nested timing shares must not be added across time.
+- **Method and rationale:** Aalen-Johansen CIFs preserve competing risks;
+  nonparametric hazards preserve observed monthly timing.
+- **Programmatic relevance:** Shows what reasons matter and when support must
+  occur.
+
+## Section 06: Distribution of reasons among discontinuations
+
+- **Rows and columns:** The method view has reasons in rows and horizons in
+  columns. The time-point view has methods in rows and reasons in columns.
+- **Numerator:** Cause-specific CIF for one reason.
+- **Denominator:** Any-reason CIF for the same method and horizon.
+- **Totals:** Nine mutually exclusive reason shares total 100% within every
+  method and horizon.
+- **Method and rationale:** Ratios of weighted competing-risk CIFs retain
+  consistency with the life-table results rather than raw event counts.
+- **Programmatic relevance:** Shows the relative composition of discontinuation
+  and therefore the balance of responses likely to be needed.
+
+## Section 07: Time to contraceptive reinitiation
+
+- **Rows and columns:** Method rows describe the method that ended. Reinitiation
+  is shown cumulatively at 1, 3, 6, 9, and 12 months; pregnancy first and no
+  event are shown at 12 months. Curves provide monthly values.
+- **Starting population:** Discontinued episodes excluding method failure and
+  desire for pregnancy.
+- **Numerator:** Weighted first reinitiations or first pregnancy-related events
+  in month *t*.
+- **Denominator:** Weighted eligible episodes still observed and free of both
+  outcomes at the beginning of month *t*.
+- **Totals:** At one horizon, reinitiation + pregnancy first + no event = 100%.
+  Reinitiation milestones are nested and must not be added.
+- **Method and rationale:** Weighted Aalen-Johansen competing-risk CIF handles
+  pregnancy as a competing event and interview censoring.
+- **Programmatic relevance:** Quantifies protection gaps and opportunities for
+  same-day switching and rapid follow-up.
+
+## Section 08: Method used upon reinitiation
+
+- **Rows and columns:** Rows are discontinued methods and columns are first
+  subsequent methods. The main matrix is conditional among reinitiators; the
+  expanded matrix uses all eligible episodes and adds pregnancy and no event.
+- **Numerator:** Destination-specific Aalen-Johansen CIF.
+- **Denominator:** Any-method reinitiation CIF for the conditional matrix; all
+  eligible episodes for the expanded matrix.
+- **Totals:** Destinations total 100% in the conditional matrix. Destinations +
+  pregnancy + no event total 100% in the expanded matrix.
+- **Method and rationale:** A multi-cause Aalen-Johansen partition preserves
+  competing outcomes and censoring before conditional normalization.
+- **Programmatic relevance:** Shows which replacement methods must be available
+  and whether destination mix differs for early and later reinitiators.
+
+## Section 09: Gap duration after discontinuation
+
+- **Rows and columns:** Rows are discontinued methods. Columns are mutually
+  exclusive restart intervals, pregnancy before restart, and no observed event.
+- **Numerator:** Increment in reinitiation CIF within an interval or the
+  12-month pregnancy/no-event state probability.
+- **Denominator:** All eligible non-pregnancy-intent discontinued episodes in
+  the method row, handled through monthly risk sets.
+- **Totals:** Five restart intervals + pregnancy + no event total 100%.
+- **Method and rationale:** Differences between Aalen-Johansen CIF milestones
+  produce mutually exclusive gap categories while retaining competing risk and
+  censoring.
+- **Programmatic relevance:** Separates prompt switching from delayed restart
+  and identifies groups with prolonged gaps.
+
+## Section 09A: Integrated post-discontinuation protection pathways
+
+- **Unit and denominator:** Eligible discontinued modern-method episodes; one
+  woman may contribute multiple episodes. Monthly denominators are the
+  survey-weighted episodes still observed and free of every competing pathway.
+- **Mutually exclusive columns:** Immediate modern reinitiation in month 1;
+  temporary non-use followed by modern reinitiation in months 2-3; a prolonged
+  gap followed by modern reinitiation in months 4-12; first traditional-method
+  use; pregnancy first; or no reinitiation or pregnancy observed by month 12.
+  These six columns sum to 100% before rounding.
+- **Method:** Survey-weighted multi-cause Aalen-Johansen cumulative incidence,
+  with interview as right censoring. The first qualifying outcome determines
+  the pathway.
+- **Timing rationale:** Multi-country DHS research commonly defines prompt
+  switching as switching within three months because most switching occurs in
+  that period. Months 4-12 are retained as an operational prolonged-gap band,
+  not a universal clinical threshold. Section 09 preserves the finer 4-6,
+  7-9, and 10-12-month intervals.
+- **Programmatic relevance:** Ordinary discontinuation combines immediate
+  successful transitions with short gaps, prolonged gaps, movement to
+  traditional methods, pregnancy, and no observed return. Separating these
+  pathways identifies different needs for same-day switching, follow-up,
+  counseling, method availability, and re-engagement.
+
+## Section 10: Method-effectiveness transition
+
+- **Rows and columns:** Rows are discontinued methods. Columns classify the
+  subsequent method as higher tier, different same-tier method, same method, or
+  lower tier, while retaining pregnancy and no event.
+- **Numerator:** Destination-specific CIF grouped into the transition category.
+- **Denominator:** All eligible discontinued episodes in the row method.
+- **Totals:** All transition, pregnancy, and no-event columns total 100%.
+- **Method and rationale:** Aalen-Johansen destination probabilities are
+  aggregated with a prespecified effectiveness-tier mapping.
+- **Programmatic relevance:** Summarizes pathways but does not determine whether
+  a method is personally preferable or clinically suitable.
+
+## Section 11: Outcomes after discontinuation by reason
+
+- **Rows and columns:** Rows are all nine reasons. At 1, 3, 6, and 12 months,
+  columns show reinitiation, pregnancy before reinitiation, and no event. Heat
+  maps display the same values separately by outcome.
+- **Numerator:** Weighted first reinitiations or pregnancy-related events in
+  each month; no event is the remaining state probability.
+- **Denominator:** Weighted episodes stopped for the reason and still free of
+  both outcomes at each month's start.
+- **Totals:** Three outcomes total 100% within each reason and horizon. Horizons
+  are cumulative and must not be added.
+- **Method and rationale:** Reason-stratified weighted Aalen-Johansen estimation
+  accounts for competing pregnancy and censoring.
+- **Programmatic relevance:** Connects why use ended with whether prompt
+  switching, pregnancy, or prolonged non-use followed.
+
+## Section 12: Previous method by reason
+
+- **Rows and columns:** Rows are previous methods and columns are reasons. The
+  controls select the cumulative outcome and horizon displayed.
+- **Numerator:** Weighted first events for the selected outcome within the
+  method-reason subgroup.
+- **Denominator:** Weighted subgroup episodes still observed and free of both
+  outcomes at each month's start.
+- **Totals:** Within one subgroup and horizon, reinitiation + pregnancy first +
+  no event = 100%. Cells across reasons must not be added.
+- **Method and rationale:** Separate weighted Aalen-Johansen estimates are
+  calculated within each subgroup. Fewer than 25 episodes are suppressed and
+  25–49 are flagged.
+- **Programmatic relevance:** Shows whether the same reason leads to different
+  pathways depending on the method that ended.
+
+## Section 13: Calendar use and initiation validation
+
+- **Rows and columns:** Interview-year rows compare the v312 survey question
+  with the vcal_1 state in the same interview month. A separate annual table
+  reports calendar-based use by historical calendar year, followed by the
+  method-by-year initiation mix.
+- **Numerator:** Weighted women using contraception at interview for the
+  current-use comparison; weighted use-coded woman-months for annual calendar
+  prevalence; weighted observed starts for annual initiation mix.
+- **Denominator:** Women with valid current-use and interview-month calendar
+  fields for the paired comparison; valid observed woman-months within the year
+  for annual prevalence; all observed weighted starts within the year for
+  initiation mix.
+- **Totals:** Any-method calendar use equals modern plus traditional use. Each
+  year's five initiation-method shares add to 100% before rounding.
+- **Method and rationale:** v312 is cross-sectional and measured only at
+  interview, so it cannot generate historical annual estimates. The valid
+  like-for-like check compares v312 with the calendar in that same interview
+  month; retrospective annual trends remain calendar-based.
+- **Programmatic relevance:** Confirms consistency of the two current-use
+  measures while preserving the calendar's distinct value for examining change
+  over historical years.
+
+## Section 14: Observed-start cohort and contraceptive recovery
+
+- **Primary DHS-style population:** Eligible episodes observed at risk inside
+  the analysis window. Episodes beginning earlier within the recorded calendar
+  can enter through delayed entry when they remain in use. Episodes already in
+  progress at the first recorded calendar month are excluded because their
+  start is not observed.
+- **Observed-start cohort:** Episodes whose initiation and immediately
+  preceding calendar state are observed. This narrower cohort links uptake to
+  subsequent discontinuation and is the appropriate complementary leaky-bucket
+  view.
+- **Switching versus reinitiation:** Any-method reinitiation includes a return
+  to the same method and a start of a different method. Switching is restricted
+  to a first subsequent method different from the method that ended.
+- **Post-discontinuation outcomes:** Different-method switching, same-method
+  restarting, pregnancy before reinitiation, and no observed event form a
+  competing-risk partition at each milestone and sum to 100% before rounding.
+- **Statistical methods:** Survey-weighted discrete-time life tables estimate
+  discontinuation. Survey-weighted Aalen-Johansen cumulative incidence
+  estimates post-discontinuation pathways while treating pregnancy as a
+  competing event and interview as right censoring.
+- **Programmatic relevance:** The primary analysis remains comparable with the
+  DHS report. The observed-start cohort adds a program-flow view of new method
+  starts, loss through discontinuation, and recovery through same-method return
+  or method switching.
+
+## Section 15: How to interpret the episode cohorts and time horizons
+
+- **Primary DHS-style discontinuation population:** Eligible contraceptive
+  episodes observed at risk in the 3-62 months-before-interview window. This
+  includes observed starts and eligible episodes that began before the
+  62-month analysis boundary but remained in use inside the window and enter
+  through delayed entry. It does not include episodes already underway at the
+  oldest recorded calendar month because their initiation date and full
+  duration are unknown.
+- **Observed-start sensitivity population:** Episodes beginning 3-62 months
+  before interview whose immediately preceding calendar state is also
+  observed. The approximately five-year window selects eligible starts; it is
+  not the duration of follow-up for the outcome.
+- **Discontinuation clock:** Time zero is method initiation. Survey-weighted
+  discrete-time life tables estimate cumulative discontinuation by months 3,
+  6, 9, and 12 of use. Each month's numerator is weighted discontinuations in
+  that month and its denominator is the weighted set still observed, using the
+  method, and at risk at the beginning of the month. Incomplete observation is
+  handled through right-censoring.
+- **Post-discontinuation clock:** Time zero is the end of an eligible
+  discontinued episode. Survey-weighted Aalen-Johansen cumulative incidence
+  estimates different-method switching, same-method restarting, and pregnancy
+  first through months 1, 3, 6, 9, and 12. The monthly denominator is the
+  weighted set still observed and free of both reinitiation and pregnancy.
+- **Outcome identity:** At each post-discontinuation horizon, different-method
+  switching, same-method restarting, pregnancy first, and no observed event
+  sum to 100% before rounding. Any-method reinitiation equals different-method
+  switching plus same-method restarting.
+- **Why both populations matter:** The primary construction preserves DHS
+  comparability. The narrower observed-start cohort provides a complementary
+  leaky-bucket view linking visible starts to first-year discontinuation and
+  subsequent contraceptive recovery.
+
+# Execute the reproducible pipeline
+
+The chunk below runs the same modular scripts used to generate the final HTML.
+It is intentionally hidden from the rendered documentation because the
+preceding sections explain the transformations and estimators directly.
+
+```{r run-analysis, include=FALSE}
+analysis_log <- capture.output({
+  source(file.path(code_dir, "replicate_table_7_11.R"), chdir = FALSE)
+  source(file.path(code_dir, "analyze_monthly_hazards.R"), chdir = FALSE)
+  source(file.path(code_dir, "analyze_initiation.R"), chdir = FALSE)
+  source(file.path(code_dir, "analyze_reinitiation.R"), chdir = FALSE)
+  source(file.path(code_dir, "analyze_leaky_bucket.R"), chdir = FALSE)
+  source(
+    file.path(code_dir, "analyze_reason_post_discontinuation.R"),
+    chdir = FALSE
+  )
+  source(
+    file.path(code_dir, "analyze_post_discontinuation_transitions.R"),
+    chdir = FALSE
+  )
+  source(file.path(code_dir, "summarize_predominant_reasons.R"), chdir = FALSE)
+  source(file.path(code_dir, "build_html_report.R"), chdir = FALSE)
+  source(file.path(code_dir, "build_programmatic_summary.R"), chdir = FALSE)
+})
+```
+
+# Selected validation outputs
+
+```{r display-initiation}
+initiation_mix <- read.csv(
+  file.path(derived_dir, "observed_method_initiation_mix.csv"),
+  check.names = FALSE
+)
+knitr::kable(
+  initiation_mix[, c(
+    "Method", "Observed starts (weighted)", "Share of observed starts (%)"
+  )],
+  digits = 1,
+  caption = "Observed method initiation mix"
+)
+
+annual_use <- read.csv(
+  file.path(derived_dir, "annual_calendar_contraceptive_use.csv"),
+  check.names = FALSE
+)
+knitr::kable(
+  annual_use[, c(
+    "Calendar year", "Any contraceptive method use (%)",
+    "Modern contraceptive method use (%)", "Coverage"
+  )],
+  digits = 1,
+  caption = "Annual calendar-based contraceptive use"
+)
+
+annual_initiation <- read.csv(
+  file.path(derived_dir, "annual_method_initiation_percent.csv"),
+  check.names = FALSE
+)
+knitr::kable(
+  annual_initiation,
+  digits = 1,
+  caption = "Annual method initiation mix"
+)
+
+current_use_comparison <- read.csv(
+  file.path(derived_dir, "calendar_vs_v312_current_use.csv"),
+  check.names = FALSE
+)
+knitr::kable(
+  current_use_comparison,
+  digits = 2,
+  caption = "Current use at interview: calendar versus survey question"
+)
+
+leaky_bucket <- read.csv(
+  file.path(derived_dir, "leaky_bucket_discontinuation_comparison.csv"),
+  check.names = FALSE
+)
+knitr::kable(
+  leaky_bucket,
+  digits = 1,
+  caption = "DHS-style versus observed-start discontinuation"
+)
+
+switching_pathways <- read.csv(
+  file.path(derived_dir, "reinitiation_switching_pathways.csv"),
+  check.names = FALSE
+)
+knitr::kable(
+  subset(switching_pathways, Method == "All methods"),
+  digits = 1,
+  caption = "Timing of switching and reinitiation, all methods"
+)
+
+modern_protection_pathways <- read.csv(
+  file.path(
+    derived_dir,
+    "post_discontinuation_modern_protection_pathways.csv"
+  ),
+  check.names = FALSE
+)
+knitr::kable(
+  modern_protection_pathways,
+  digits = 1,
+  caption = "Integrated 12-month modern-protection pathways"
+)
+```
+
+```{r display-discontinuation}
+all_cause <- read.csv(
+  file.path(derived_dir, "all_cause_life_table_published_groups.csv"),
+  check.names = FALSE
+)
+knitr::kable(
+  all_cause[, c("Method", "3 months", "6 months", "9 months", "12 months")],
+  digits = 1,
+  caption = "Cumulative all-cause discontinuation"
+)
+```
+
+```{r validation-checks}
+reason_results <- read.csv(
+  file.path(derived_dir, "competing_risk_reasons_3_6_9_12_months.csv"),
+  check.names = FALSE
+)
+reinitiation_results <- read.csv(
+  file.path(derived_dir, "reinitiation_competing_risk_1_3_6_9_12.csv"),
+  check.names = FALSE
+)
+gap_results <- read.csv(
+  file.path(derived_dir, "post_discontinuation_gap_distribution.csv"),
+  check.names = FALSE
+)
+effect_results <- subset(
+  read.csv(
+    file.path(derived_dir, "post_discontinuation_effectiveness_transition.csv"),
+    check.names = FALSE
+  ),
+  Month == 12
+)
+destination_results <- read.csv(
+  file.path(
+    derived_dir,
+    "post_discontinuation_destination_among_reinitiators.csv"
+  ),
+  check.names = FALSE
+)
+reason_outcome_results <- read.csv(
+  file.path(derived_dir, "reason_post_discontinuation_outcomes.csv"),
+  check.names = FALSE
+)
+method_reason_outcome_results <- read.csv(
+  file.path(
+    derived_dir,
+    "reason_previous_method_post_discontinuation_outcomes.csv"
+  ),
+  check.names = FALSE
+)
+modern_protection_results <- read.csv(
+  file.path(
+    derived_dir,
+    "post_discontinuation_modern_protection_pathways.csv"
+  ),
+  check.names = FALSE
+)
+
+reason_columns <- c(
+  "Method failure", "Desire to become pregnant",
+  "Other fertility-related reasons", "Changes in menstrual bleeding",
+  "Other side effects/health concerns", "Wanted more effective method",
+  "Other method-related reasons", "Husband/partner disapproved",
+  "Other reasons"
+)
+
+reason_identity_error <- max(abs(
+  rowSums(reason_results[, reason_columns]) - reason_results$`Any reason`
+))
+reinitiation_identity_error <- max(abs(
+  reinitiation_results$`Reinitiated (%)` +
+    reinitiation_results$`Pregnancy competing event (%)` +
+    reinitiation_results$`No observed event (%)` - 100
+))
+gap_identity_error <- max(abs(rowSums(gap_results[, -1]) - 100))
+effect_identity_error <- max(abs(
+  rowSums(effect_results[, setdiff(names(effect_results), c(
+    "Discontinued method", "Month"
+  ))]) - 100
+))
+destination_identity_error <- max(abs(
+  rowSums(destination_results[, setdiff(
+    names(destination_results),
+    c("Discontinued method", "Month")
+  )]) - 100
+))
+reason_outcome_columns <- c(
+  "Reinitiated (%)", "Pregnancy before reinitiation (%)",
+  "No observed event (%)"
+)
+reason_outcome_identity_error <- max(abs(
+  rowSums(reason_outcome_results[, reason_outcome_columns]) - 100
+))
+method_reason_identity_error <- max(abs(
+  rowSums(method_reason_outcome_results[, reason_outcome_columns]) - 100
+))
+switching_pathway_identity_error <- max(abs(
+  switching_pathways$`Switched to different method (%)` +
+    switching_pathways$`Restarted same method (%)` +
+    switching_pathways$`Pregnancy before reinitiation (%)` +
+    switching_pathways$`No observed event (%)` - 100
+))
+switching_restart_identity_error <- max(abs(
+  switching_pathways$`Switched to different method (%)` +
+    switching_pathways$`Restarted same method (%)` -
+    switching_pathways$`Any-method reinitiation (%)`
+))
+annual_use_identity_error <- max(abs(
+  annual_use$`Any contraceptive method use (%)` -
+    annual_use$`Modern contraceptive method use (%)` -
+    annual_use$`Traditional method use (%)`
+))
+annual_initiation_identity_error <- max(abs(
+  colSums(annual_initiation[, -1, drop = FALSE]) - 100
+))
+modern_protection_columns <- c(
+  "Continued modern protection",
+  "Temporary non-use then modern reinitiation",
+  "Prolonged gap then modern reinitiation",
+  "Traditional-method use",
+  "Pregnancy first",
+  "No reinitiation or pregnancy observed by 12 months"
+)
+modern_protection_identity_error <- max(abs(
+  rowSums(modern_protection_results[, modern_protection_columns]) - 100
+))
+
+data.frame(
+  Check = c(
+    "Sum of reason-specific CIFs equals any-reason discontinuation",
+    "Reinitiation, pregnancy, and event-free components sum to 100%",
+    "Gap-duration outcome rows sum to 100%",
+    "Effectiveness-transition outcome rows sum to 100%",
+    "Conditional destination rows sum to 100%",
+    "Reason-linked outcome rows sum to 100%",
+    "Method-by-reason outcome rows sum to 100%",
+    "Annual any-method use equals modern plus traditional use",
+    "Annual initiation method shares sum to 100%",
+    "Switching pathway components sum to 100%",
+    "Different-method plus same-method restart equals any reinitiation",
+    "Integrated modern-protection pathway rows sum to 100%"
+  ),
+  `Maximum absolute error` = c(
+    reason_identity_error,
+    reinitiation_identity_error,
+    gap_identity_error,
+    effect_identity_error,
+    destination_identity_error,
+    reason_outcome_identity_error,
+    method_reason_identity_error,
+    annual_use_identity_error,
+    annual_initiation_identity_error,
+    switching_pathway_identity_error,
+    switching_restart_identity_error,
+    modern_protection_identity_error
+  ),
+  Status = c(
+    ifelse(reason_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(reinitiation_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(gap_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(effect_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(destination_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(reason_outcome_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(method_reason_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(annual_use_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(annual_initiation_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(switching_pathway_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(switching_restart_identity_error < 1e-8, "PASS", "FAIL"),
+    ifelse(modern_protection_identity_error < 1e-8, "PASS", "FAIL")
+  ),
+  check.names = FALSE
+) |>
+  knitr::kable(digits = 12, caption = "Internal validation checks")
+```
+
+# Rebuilding the final HTML
+
+Rendering this R Markdown file executes the complete analysis and recreates:
+
+```text
+output/ethiopia_discontinuation_3_6_9_12.html
+```
+
+From RStudio, use **Knit**, or run:
+
+```{r render-command, eval=FALSE}
+rmarkdown::render("ethiopia_discontinuation_analysis.Rmd")
+```
+
+The modular source files remain in `code/` so that individual analysis stages
+can be reviewed and tested independently.

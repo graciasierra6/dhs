@@ -1,0 +1,7 @@
+"Method","3 months","6 months","9 months","12 months","Weighted episodes","Unweighted entering month 1","Unweighted at risk month 12","Sample support"
+"Injectables",15.9156085991744,24.8866184141584,33.714279564404,43.3494433932413,6262.577696,4272,2224,"Adequate for an all-cause estimate; still inspect CI"
+"Implants",4.43548200289751,7.61327979149614,9.87011619888338,15.3512228693693,2566.74974,2220,1762,"Adequate for an all-cause estimate; still inspect CI"
+"Pill",36.0249585278766,49.896039243021,55.4813052803076,64.9731527487035,943.74873,785,215,"Adequate for an all-cause estimate; still inspect CI"
+"Emergency contraception",71.2046882350396,76.9359249458609,79.5918278191553,86.8448868054963,195.643219,160,22,"Insufficient at one endpoint (<25); suppress or aggregate"
+"Other",12.0542308810976,19.1313804451487,22.3307532740325,30.5106708218975,608.918992,623,372,"Adequate for an all-cause estimate; still inspect CI"
+"All methods",15.9526331808836,23.7560807631135,30.2478799067269,38.6454076759384,10577.638377,8060,4595,"Adequate for an all-cause estimate; still inspect CI"

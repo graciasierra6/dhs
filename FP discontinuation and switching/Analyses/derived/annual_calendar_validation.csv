@@ -1,0 +1,7 @@
+"Calendar year","Any minus modern plus traditional (percentage points)","Initiation method-share sum (%)","Coverage","Status"
+2019,-2.94209101525666e-15,100,"Partial boundary-year coverage","PASS"
+2020,-2.77555756156289e-15,100,"Complete full-sample calendar year","PASS"
+2021,-2.77555756156289e-16,100,"Complete full-sample calendar year","PASS"
+2022,-3.33066907387547e-16,100,"Complete full-sample calendar year","PASS"
+2023,2.33146835171283e-15,100,"Complete full-sample calendar year","PASS"
+2024,-2.66453525910038e-15,100,"Partial boundary-year coverage","PASS"

@@ -1,0 +1,6 @@
+"Check","Value","Status"
+"Observed-start episode identifiers are unique",0,"PASS"
+"Observed-start episodes have entry month zero",0,"PASS"
+"Observed-start reinitiation episodes are a subset of observed starts",0,"PASS"
+"Switching, same-method restart, pregnancy, and no event sum to 100%",2.8421709430404e-14,"PASS"
+"Different-method plus same-method restart equals any reinitiation",7.105427357601e-15,"PASS"

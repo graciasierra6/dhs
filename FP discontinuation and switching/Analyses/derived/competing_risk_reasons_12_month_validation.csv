@@ -1,0 +1,67 @@
+"Method","Measure","Calculated 12 months","DHS published 12 months","Difference (percentage points)"
+"Injectables","Method failure",0.700608387437774,0.8,-0.0993916125622257
+"Injectables","Desire to become pregnant",18.1405958314354,18.4,-0.259404168564593
+"Injectables","Other fertility-related reasons",4.17255747042657,4.1,0.0725574704265721
+"Injectables","Changes in menstrual bleeding",3.43796424156508,3.6,-0.162035758434921
+"Injectables","Other side effects/health concerns",3.68278106738013,3.8,-0.117218932619869
+"Injectables","Wanted more effective method",5.57715853319236,5.5,0.077158533192363
+"Injectables","Other method-related reasons",4.92910849938108,5.1,-0.170891500618916
+"Injectables","Husband/partner disapproved",0.557908268682389,0.6,-0.0420917313176113
+"Injectables","Other reasons",2.15076109374052,2.6,-0.449238906259485
+"Injectables","Any reason",43.3494433932413,44.5,-1.15055660675869
+"Injectables","Switched to another method",5.10927720851996,5.1,0.00927720851996483
+"Implants","Method failure",0.200018043963219,0.2,1.80439632186391e-05
+"Implants","Desire to become pregnant",5.61138091980165,6.1,-0.488619080198347
+"Implants","Other fertility-related reasons",0.636539417387387,0.6,0.0365394173873874
+"Implants","Changes in menstrual bleeding",0.68949549743452,0.7,-0.0105045025654797
+"Implants","Other side effects/health concerns",2.2967993623164,2.3,-0.0032006376835958
+"Implants","Wanted more effective method",2.84668717134372,2.9,-0.0533128286562756
+"Implants","Other method-related reasons",2.19590084795901,2.2,-0.00409915204099498
+"Implants","Husband/partner disapproved",0.0453135933349859,0,0.0453135933349859
+"Implants","Other reasons",0.829088015828396,1,-0.170911984171604
+"Implants","Any reason",15.3512228693693,16,-0.648777130630707
+"Implants","Switched to another method",2.79952767266965,2.6,0.199527672669646
+"Pill","Method failure",2.14011188449344,3.2,-1.05988811550656
+"Pill","Desire to become pregnant",17.878091256796,18.7,-0.821908743204038
+"Pill","Other fertility-related reasons",16.1034256465462,15.9,0.203425646546238
+"Pill","Changes in menstrual bleeding",2.45634144988909,2.5,-0.0436585501109144
+"Pill","Other side effects/health concerns",2.10268428906899,2,0.102684289068995
+"Pill","Wanted more effective method",14.3643667748063,14.1,0.264366774806348
+"Pill","Other method-related reasons",6.48581899240264,6.4,0.0858189924026433
+"Pill","Husband/partner disapproved",2.18367837796043,2.2,-0.0163216220395741
+"Pill","Other reasons",1.25863407674034,2.5,-1.24136592325966
+"Pill","Any reason",64.9731527487035,67.4,-2.42684725129652
+"Pill","Switched to another method",16.3135471154799,15.7,0.613547115479868
+"Emergency contraception","Method failure",0.954957287192107,0.9,0.0549572871921066
+"Emergency contraception","Desire to become pregnant",5.86815825449948,5.8,0.0681582544994797
+"Emergency contraception","Other fertility-related reasons",51.7208556930758,51.4,0.320855693075849
+"Emergency contraception","Changes in menstrual bleeding",5.2054890460455,5.1,0.105489046045496
+"Emergency contraception","Other side effects/health concerns",7.37340837947284,7.3,0.0734083794728413
+"Emergency contraception","Wanted more effective method",6.16826915896218,6.1,0.0682691589621829
+"Emergency contraception","Other method-related reasons",4.24618728100059,4.2,0.0461872810005941
+"Emergency contraception","Husband/partner disapproved",0,0,0
+"Emergency contraception","Other reasons",5.30756170524779,6.3,-0.992438294752206
+"Emergency contraception","Any reason",86.8448868054963,87.2,-0.355113194503659
+"Emergency contraception","Switched to another method",7.66038234321034,7.6,0.0603823432103372
+"Other","Method failure",1.59822196292444,1.6,-0.00177803707555535
+"Other","Desire to become pregnant",8.82192219760185,9,-0.178077802398153
+"Other","Other fertility-related reasons",5.59921343094403,6,-0.400786569055974
+"Other","Changes in menstrual bleeding",3.44155511716579,3.4,0.0415551171657871
+"Other","Other side effects/health concerns",1.18115488022835,1.2,-0.018845119771651
+"Other","Wanted more effective method",6.51222831821506,6.5,0.0122283182150618
+"Other","Other method-related reasons",1.44929672854207,1.4,0.0492967285420667
+"Other","Husband/partner disapproved",0,0,0
+"Other","Other reasons",1.90707818627599,1.9,0.00707818627599366
+"Other","Any reason",30.5106708218976,31.1,-0.589329178102428
+"Other","Switched to another method",10.7438803252663,10.7,0.0438803252663078
+"All methods","Method failure",0.764002473375237,0.9,-0.135997526624763
+"All methods","Desire to become pregnant",14.271846863852,14.6,-0.328153136148005
+"All methods","Other fertility-related reasons",5.46193304223517,5.5,-0.0380669577648334
+"All methods","Changes in menstrual bleeding",2.71182535573802,2.8,-0.0881746442619775
+"All methods","Other side effects/health concerns",3.13131876460864,3.2,-0.0686812353913555
+"All methods","Wanted more effective method",5.79389968305563,5.8,-0.00610031694436497
+"All methods","Other method-related reasons",4.19679541829719,4.3,-0.103204581702806
+"All methods","Husband/partner disapproved",0.547165957279635,0.5,0.047165957279635
+"All methods","Other reasons",1.76662011749688,2.2,-0.433379882503121
+"All methods","Any reason",38.6454076759384,39.8,-1.15459232406159
+"All methods","Switched to another method",5.94844149583776,5.8,0.148441495837758

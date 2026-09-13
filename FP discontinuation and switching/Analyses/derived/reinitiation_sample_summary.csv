@@ -1,0 +1,7 @@
+"Method","Eligible discontinued episodes (unweighted)","Eligible discontinued episodes (weighted)","Observed reinitiations (unweighted)","Observed pregnancy competing events (unweighted)","Right censored (unweighted)"
+"Injectables",1589,1892.685388,784,381,424
+"Implants",623,600.858176,321,166,136
+"Pill",395,433.857582,262,49,84
+"Emergency contraception",113,146.216318,57,12,44
+"Other",212,167.712759,128,42,42
+"All methods",2932,3241.330223,1552,650,730
