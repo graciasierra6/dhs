@@ -1,0 +1,7 @@
+metric,value
+Median country K interval width change (pp),0.027
+Mean country K interval width change (pp),0.052
+Countries with narrower K intervals,30
+Countries with wider K intervals,33
+Median absolute K mean change (pp),0.092
+Max absolute K mean change (pp),0.516

@@ -1,0 +1,4 @@
+fit,retained_draws,countries,min_K_n_eff,median_K_n_eff,max_K_Rhat,divergences,max_treedepth
+Original canonical cache,700,63,189.78,486.7,1.01,0,12
+High-ESS production cache before extra chains,2000,63,468.63,1551.67,1.0051,0,12
+High-ESS production cache after extra chains,4000,63,1156.3,3258.21,1.0024,0,12

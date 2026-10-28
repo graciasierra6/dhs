@@ -1,0 +1,31 @@
+"country","n_obs","holdout_year","has_obs_around_2010"
+"Bolivia",5,2008,TRUE
+"Niger",4,2012,TRUE
+"Peru",10,2012,TRUE
+"Egypt",8,2014,TRUE
+"Colombia",7,2015,TRUE
+"Zimbabwe",6,2015,TRUE
+"Armenia",4,2016,TRUE
+"Haiti",5,2016,TRUE
+"Uganda",6,2016,TRUE
+"Benin",5,2017,TRUE
+"Indonesia",8,2017,TRUE
+"Pakistan",4,2017,TRUE
+"Cameroon",5,2018,TRUE
+"Guinea",4,2018,TRUE
+"Turkey",5,2018,TRUE
+"Ethiopia",5,2019,TRUE
+"Rwanda",7,2019,TRUE
+"Burkina Faso",5,2021,TRUE
+"Cambodia",5,2021,TRUE
+"Cote d'Ivoire",4,2021,TRUE
+"Madagascar",5,2021,TRUE
+"Bangladesh",9,2022,TRUE
+"Ghana",7,2022,TRUE
+"Kenya",7,2022,TRUE
+"Mozambique",4,2022,TRUE
+"Nepal",6,2022,TRUE
+"Philippines",7,2022,TRUE
+"Tanzania",7,2022,TRUE
+"Jordan",8,2023,TRUE
+"Senegal",13,2023,TRUE
