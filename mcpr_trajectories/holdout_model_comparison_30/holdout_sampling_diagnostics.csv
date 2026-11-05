@@ -1,5 +1,0 @@
-"method","n_rhat_gt_101","n_rhat_gt_105","max_rhat","min_ess_bulk","divergences","max_treedepth","n_treedepth_at_max"
-"Fixed s, country K",82,12,1.10387007865761,37.7208443158403,0,10,1000
-"Fixed K, country s",120,82,1.34559442067369,5.78055572677283,78,10,919
-"FPET baseline",22,0,1.0206833821078,236.867346261335,0,13,700
-"FPET best compromise",7,0,1.01636647268594,171.275180860509,0,13,350
